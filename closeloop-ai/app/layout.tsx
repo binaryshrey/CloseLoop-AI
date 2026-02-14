@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
+import { withAuth } from "@workos-inc/authkit-nextjs";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,17 +20,20 @@ export const metadata: Metadata = {
     "Highly customizable components for building modern websites and applications",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const auth = await withAuth();
+  const { accessToken, ...initialAuth } = auth; // don't leak token to client
+
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased`}
       >
-        {children}
+        <AuthKitProvider initialAuth={initialAuth}>{children}</AuthKitProvider>
       </body>
     </html>
   );
