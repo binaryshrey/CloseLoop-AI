@@ -148,7 +148,16 @@ export async function POST(request: NextRequest) {
       // Store callSid -> conversationId mapping for transcript retrieval
       if (callSid && conversationId) {
         callConversationMap.set(callSid, conversationId);
-        console.log(`Stored mapping: ${callSid} -> ${conversationId}`);
+        console.log(`✅ Stored mapping: ${callSid} -> ${conversationId}`);
+        
+        // Also register this mapping in the webhook module
+        try {
+          const { registerCallMapping } = await import('../elevenlabs/webhook/route');
+          registerCallMapping(callSid, conversationId);
+          console.log('✅ Registered bidirectional mapping for webhooks');
+        } catch (err) {
+          console.warn('⚠️  Could not register call mapping:', err);
+        }
 
         // Clean up after 1 hour
         setTimeout(() => {

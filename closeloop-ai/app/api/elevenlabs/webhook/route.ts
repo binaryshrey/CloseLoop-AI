@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getConversationId } from '../twilio/voice/route';
 
 // In-memory store for call transcripts (use Redis in production)
 const callTranscripts: Map<string, Array<{
@@ -10,6 +11,34 @@ const callTranscripts: Map<string, Array<{
 
 // SSE connections store - shared module state
 const sseConnections = new Map<string, Set<ReadableStreamDefaultController>>();
+
+// Bidirectional mapping between callSid and conversationId
+const conversationToCallMap = new Map<string, string>();
+const callToConversationMap = new Map<string, string>();
+
+export function registerCallMapping(callSid: string, conversationId: string) {
+  conversationToCallMap.set(conversationId, callSid);
+  callToConversationMap.set(callSid, conversationId);
+  console.log('📌 Registered mapping: callSid', callSid, '↔️ conversationId', conversationId);
+}
+
+function resolveSessionId(call_sid?: string, conversation_id?: string): string {
+  // If we have both, use call_sid as primary
+  if (call_sid) return call_sid;
+  
+  // If we only have conversation_id, try to find the mapped call_sid
+  if (conversation_id) {
+    const mappedCallSid = conversationToCallMap.get(conversation_id);
+    if (mappedCallSid) {
+      console.log('🔄 Resolved conversation_id', conversation_id, '→ callSid', mappedCallSid);
+      return mappedCallSid;
+    }
+    // If no mapping, use conversation_id
+    return conversation_id;
+  }
+  
+  return 'unknown';
+}
 
 export function addSSEConnection(callSid: string, controller: ReadableStreamDefaultController) {
   if (!sseConnections.has(callSid)) {
@@ -42,10 +71,12 @@ export async function POST(request: NextRequest) {
 
     const { type, call_sid, transcript, speaker, conversation_id } = body;
 
-    // Use call_sid or conversation_id as the session identifier
-    const sessionId = call_sid || conversation_id || 'unknown';
+    // Resolve the session ID - use callSid if available, otherwise map conversation_id
+    const sessionId = resolveSessionId(call_sid, conversation_id);
 
-    console.log('🆔 Session ID:', sessionId);
+    console.log('🆔 Resolved Session ID:', sessionId);
+    console.log('   Original call_sid:', call_sid);
+    console.log('   Original conversation_id:', conversation_id);
 
     // Handle different event types from ElevenLabs
     switch (type) {
