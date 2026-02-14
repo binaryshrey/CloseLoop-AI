@@ -690,34 +690,89 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   // Handle starting a call
   const handleStartCall = async (leadId: string) => {
     const currentLead = analyzedLeads.find((l) => l.id === leadId);
+
+    if (!currentLead) {
+      toast.error("Lead Not Found", {
+        description: "Could not find lead information",
+      });
+      return;
+    }
+
+    // Validate phone number
+    if (!currentLead.phone) {
+      toast.error("No Phone Number", {
+        description: `${currentLead.name} doesn't have a phone number`,
+      });
+      return;
+    }
+
     setActiveCallLead(leadId);
     setCallModalOpen(true);
 
-    // Create call log entry
+    // Create call log entry and initiate Twilio call
     if (campaignId && currentLead) {
       try {
-        const response = await fetch("/api/call-logs", {
+        toast.info("Initiating Call", {
+          description: `Connecting to ${currentLead.name}...`,
+        });
+
+        // Create call log entry
+        const callLogResponse = await fetch("/api/call-logs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             campaign_id: campaignId,
             lead_id: leadId.toString(),
-            call_status: "in_progress",
+            call_status: "initiating",
             started_at: new Date().toISOString(),
           }),
         });
 
-        const data = await response.json();
-        if (data.success) {
-          toast.success("Call Started", {
-            description: `Connected with ${currentLead.name}`,
+        const callLogData = await callLogResponse.json();
+        console.log("Call log created:", callLogData);
+
+        // Initiate the actual call via Twilio
+        const callResponse = await fetch("/api/twilio/make-call", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: currentLead.phone,
+            campaignData: {
+              campaignName,
+              campaignDescription,
+              leadName: currentLead.name,
+              leadAbout: currentLead.about,
+            },
+          }),
+        });
+
+        const callData = await callResponse.json();
+        console.log("Call API response:", callData);
+
+        if (callResponse.ok && callData.success) {
+          toast.success("Call Connected", {
+            description: `Calling ${currentLead.name} at ${currentLead.phone}`,
           });
+        } else {
+          // Handle error
+          console.error("Failed to initiate call:", callData);
+          toast.error("Call Failed", {
+            description: callData.message || callData.error || "Failed to initiate call",
+          });
+
+          // Close the modal if call failed
+          setCallModalOpen(false);
+          setActiveCallLead(null);
         }
       } catch (error) {
-        console.error("Error creating call log:", error);
+        console.error("Error starting call:", error);
         toast.error("Error", {
-          description: "Failed to start call log",
+          description: "Failed to start call. Please try again.",
         });
+
+        // Close the modal on error
+        setCallModalOpen(false);
+        setActiveCallLead(null);
       }
     }
   };
@@ -1754,13 +1809,14 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                           </h3>
                           <p className="text-xs text-gray-400 mb-3">
                             Send campaign details with product information to
-                            your team via email
+                            selected leads via email
                           </p>
                           <div className="flex items-center gap-2 text-xs text-gray-500">
                             <Mail className="h-3.5 w-3.5" />
                             <span>
-                              Recipients: shreyansh.saurabh0107@gmail.com,
-                              binaryshrey@gmail.com
+                              Recipients: {selectedLeads.length > 0
+                                ? `${selectedLeads.length} selected lead${selectedLeads.length !== 1 ? 's' : ''}`
+                                : 'No leads selected (go to Step 3)'}
                             </span>
                           </div>
                         </div>
