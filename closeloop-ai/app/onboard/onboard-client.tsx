@@ -31,6 +31,7 @@ import {
   Info,
   Send,
   Loader2,
+  Wand2,
 } from "lucide-react";
 
 const steps = [
@@ -145,14 +146,14 @@ export default function OnboardClient({ user }: OnboardClientProps) {
         setEmailSubject(campaign.email_subject || "");
         setEmailBody(campaign.email_body || "");
 
-        toast.info('Campaign Loaded', {
+        toast.info("Campaign Loaded", {
           description: `Continuing "${campaign.campaign_name}"`,
         });
       }
     } catch (error) {
       console.error("Error loading campaign:", error);
-      toast.error('Error Loading Campaign', {
-        description: 'Failed to load campaign data',
+      toast.error("Error Loading Campaign", {
+        description: "Failed to load campaign data",
       });
     }
   };
@@ -169,7 +170,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   }, [activeStep, router, campaignId]);
 
   // Save or update campaign
-  const saveCampaign = async () => {
+  const saveCampaign = async (): Promise<boolean> => {
     setIsSavingCampaign(true);
     try {
       const campaignData = {
@@ -182,80 +183,120 @@ export default function OnboardClient({ user }: OnboardClientProps) {
         product_pricing_url: productPricingUrl,
         email_subject: emailSubject,
         email_body: emailBody,
-        status: 'draft',
+        status: "draft",
       };
 
       if (campaignId) {
         // Update existing campaign
-        const response = await fetch('/api/campaigns', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/api/campaigns", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ campaign_id: campaignId, ...campaignData }),
         });
 
         const data = await response.json();
         if (data.success) {
-          toast.success('Campaign Updated', {
+          toast.success("Campaign Updated", {
             description: `"${campaignName}" has been updated successfully`,
           });
+          return true;
         } else {
-          console.error('Failed to update campaign:', data.error);
-          toast.error('Failed to Update Campaign', {
-            description: data.error || 'Please try again',
+          console.error("Failed to update campaign:", data.error);
+          toast.error("Failed to Update Campaign", {
+            description: data.error || "Please try again",
           });
+          return false;
         }
       } else {
         // Create new campaign
-        const response = await fetch('/api/campaigns', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/api/campaigns", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(campaignData),
         });
 
         const data = await response.json();
         if (data.success && data.campaign) {
           setCampaignId(data.campaign.id);
-          toast.success('Campaign Created', {
+          console.log("Campaign created with ID:", data.campaign.id);
+          toast.success("Campaign Created", {
             description: `"${campaignName}" has been saved successfully`,
           });
+          return true;
         } else {
-          console.error('Failed to create campaign:', data.error);
-          toast.error('Failed to Create Campaign', {
-            description: data.error || 'Please try again',
+          console.error("Failed to create campaign:", data.error);
+          toast.error("Failed to Create Campaign", {
+            description: data.error || "Please try again",
           });
+          return false;
         }
       }
     } catch (error) {
-      console.error('Error saving campaign:', error);
-      toast.error('Error', {
-        description: 'Failed to save campaign. Please try again.',
+      console.error("Error saving campaign:", error);
+      toast.error("Error", {
+        description: "Failed to save campaign. Please try again.",
       });
+      return false;
     } finally {
       setIsSavingCampaign(false);
     }
   };
 
   const handleNext = async () => {
-    if (activeStep === 1 && campaignName) {
-      // Save campaign before moving to step 2
-      await saveCampaign();
+    // Step 1: Save campaign before moving to step 2
+    if (activeStep === 1) {
+      if (!campaignName) {
+        toast.error("Campaign Name Required", {
+          description: "Please enter a campaign name",
+        });
+        return;
+      }
+      const success = await saveCampaign();
+      if (!success) {
+        console.error("Failed to save campaign");
+        return;
+      }
+      // Wait a bit to ensure campaignId is set
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
 
+    // Step 2: Save leads before moving to step 3
     if (activeStep === 2) {
+      if (!campaignId) {
+        toast.error("No Campaign Found", {
+          description: "Please go back to step 1 and create a campaign",
+        });
+        return;
+      }
+
       if (leadSource === "Manual Entry") {
-        // Save manual leads before moving to step 3
+        const hasLeads = manualLeads.some((lead) => lead.name);
+        if (!hasLeads) {
+          toast.warning("No Leads Entered", {
+            description: "Please add at least one lead before continuing",
+          });
+          return;
+        }
         await saveManualLeads();
-      } else if (leadSource === "Upload CSV" && csvLeads.length > 0) {
-        // Save CSV leads before moving to step 3
+      } else if (leadSource === "Upload CSV") {
+        if (csvLeads.length === 0) {
+          toast.warning("No CSV Uploaded", {
+            description: "Please upload a CSV file with leads",
+          });
+          return;
+        }
         await saveCsvLeads();
       }
+      // Give a moment for saves to complete
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
 
+    // Step 4: Update campaign with email details
     if (activeStep === 4) {
-      // Update campaign with email details
       await saveCampaign();
     }
 
+    // Move to next step
     if (activeStep < steps.length) {
       setActiveStep(activeStep + 1);
     }
@@ -288,22 +329,36 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     );
   };
 
+  // Prefill form with sample ElevenLabs data
+  const prefillSampleData = () => {
+    setCampaignName("Elevenlabs Subscriptions");
+    setCampaignType("Lead Generation");
+    setCampaignDescription(
+      "Turn your words into lifelike voice in seconds. With an ElevenLabs subscription, you can generate natural-sounding AI voices, clone your own voice, and create professional narration for videos, podcasts, apps, and more. Whether you're building content or launching a product, ElevenLabs helps you sound world-class.",
+    );
+    setProductUrl("https://elevenlabs.io/");
+    setProductAboutUrl("https://elevenlabs.io/about");
+    setProductPricingUrl("https://elevenlabs.io/pricing");
+
+    toast.success("Sample Data Loaded", {
+      description: "ElevenLabs campaign data has been prefilled",
+    });
+  };
+
   const toggleLeadSelection = async (id: string) => {
     const isSelected = !selectedLeads.includes(id);
     const leadToUpdate = analyzedLeads.find((l) => l.id === id);
 
     setSelectedLeads((prev) =>
-      isSelected
-        ? [...prev, id]
-        : prev.filter((leadId) => leadId !== id),
+      isSelected ? [...prev, id] : prev.filter((leadId) => leadId !== id),
     );
 
     // Update lead selection in database if campaign exists
     if (campaignId && leadToUpdate) {
       try {
-        const response = await fetch('/api/leads', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/api/leads", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             lead_id: leadToUpdate.id,
             is_selected: isSelected,
@@ -312,17 +367,14 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
         const data = await response.json();
         if (data.success) {
-          toast.success(
-            isSelected ? 'Lead Selected' : 'Lead Deselected',
-            {
-              description: `${leadToUpdate.name} ${isSelected ? 'added to' : 'removed from'} your campaign`,
-            }
-          );
+          toast.success(isSelected ? "Lead Selected" : "Lead Deselected", {
+            description: `${leadToUpdate.name} ${isSelected ? "added to" : "removed from"} your campaign`,
+          });
         }
       } catch (error) {
-        console.error('Error updating lead selection:', error);
-        toast.error('Error', {
-          description: 'Failed to update lead selection',
+        console.error("Error updating lead selection:", error);
+        toast.error("Error", {
+          description: "Failed to update lead selection",
         });
       }
     }
@@ -330,7 +382,18 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
   // Save manual leads to database
   const saveManualLeads = async () => {
-    if (!campaignId || manualLeads.length === 0) return;
+    if (!campaignId) {
+      console.error("Cannot save leads: campaignId is missing");
+      toast.error("Campaign Not Found", {
+        description: "Please create a campaign first before adding leads",
+      });
+      return;
+    }
+
+    if (manualLeads.length === 0) {
+      console.log("No manual leads to save");
+      return;
+    }
 
     try {
       const leadsData = manualLeads
@@ -341,32 +404,46 @@ export default function OnboardClient({ user }: OnboardClientProps) {
           about: lead.about || null,
           linkedin: lead.linkedin || null,
           twitter: lead.twitter || null,
-          source: 'manual',
+          source: "manual",
         }));
 
-      if (leadsData.length > 0) {
-        const response = await fetch('/api/leads', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ leads: leadsData }),
-        });
+      console.log("Saving manual leads:", {
+        count: leadsData.length,
+        campaignId,
+        leadsData,
+      });
 
-        const data = await response.json();
-        if (data.success) {
-          console.log(`Saved ${data.count} leads`);
-          toast.success('Leads Saved', {
-            description: `Successfully saved ${data.count} lead${data.count !== 1 ? 's' : ''} to your campaign`,
-          });
-        } else {
-          toast.error('Failed to Save Leads', {
-            description: 'Please try again',
-          });
-        }
+      if (leadsData.length === 0) {
+        toast.warning("No Valid Leads", {
+          description: "Please enter at least one lead name",
+        });
+        return;
+      }
+
+      const response = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leads: leadsData }),
+      });
+
+      const data = await response.json();
+      console.log("API response:", data);
+
+      if (data.success) {
+        console.log(`Saved ${data.count} leads`);
+        toast.success("Leads Saved", {
+          description: `Successfully saved ${data.count} lead${data.count !== 1 ? "s" : ""} to your campaign`,
+        });
+      } else {
+        console.error("API returned error:", data);
+        toast.error("Failed to Save Leads", {
+          description: data.details || data.error || "Please try again",
+        });
       }
     } catch (error) {
-      console.error('Error saving manual leads:', error);
-      toast.error('Error', {
-        description: 'Failed to save leads. Please try again.',
+      console.error("Error saving manual leads:", error);
+      toast.error("Error", {
+        description: "Failed to save leads. Check console for details.",
       });
     }
   };
@@ -375,9 +452,9 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   const handleCsvFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-        toast.error('Invalid File Type', {
-          description: 'Please upload a CSV file',
+      if (file.type !== "text/csv" && !file.name.endsWith(".csv")) {
+        toast.error("Invalid File Type", {
+          description: "Please upload a CSV file",
         });
         return;
       }
@@ -396,25 +473,25 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       complete: (results) => {
         const leads = results.data.map((row: any, index: number) => ({
           id: index + 1,
-          name: row.Name || row.name || '',
-          about: row.About || row.about || '',
-          email: row.Email || row.email || '',
-          linkedin: row.LinkedIn || row.linkedin || '',
-          phone: row['Phone Number'] || row.phone || row.Phone || '',
+          name: row.Name || row.name || "",
+          about: row.About || row.about || "",
+          email: row.Email || row.email || "",
+          linkedin: row.LinkedIn || row.linkedin || "",
+          phone: row["Phone Number"] || row.phone || row.Phone || "",
         }));
 
         setCsvLeads(leads);
         setIsUploadingCsv(false);
 
-        toast.success('CSV Parsed', {
+        toast.success("CSV Parsed", {
           description: `Found ${leads.length} leads in the file`,
         });
       },
       error: (error) => {
-        console.error('CSV parse error:', error);
+        console.error("CSV parse error:", error);
         setIsUploadingCsv(false);
-        toast.error('Failed to Parse CSV', {
-          description: 'Please check your CSV format',
+        toast.error("Failed to Parse CSV", {
+          description: "Please check your CSV format",
         });
       },
     });
@@ -422,7 +499,18 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
   // Save CSV leads to database
   const saveCsvLeads = async () => {
-    if (!campaignId || csvLeads.length === 0) return;
+    if (!campaignId) {
+      console.error("Cannot save leads: campaignId is missing");
+      toast.error("Campaign Not Found", {
+        description: "Please create a campaign first before adding leads",
+      });
+      return;
+    }
+
+    if (csvLeads.length === 0) {
+      console.log("No CSV leads to save");
+      return;
+    }
 
     try {
       const leadsData = csvLeads
@@ -434,32 +522,46 @@ export default function OnboardClient({ user }: OnboardClientProps) {
           email: lead.email || null,
           phone: lead.phone || null,
           linkedin: lead.linkedin || null,
-          source: 'csv',
+          source: "csv",
         }));
 
-      if (leadsData.length > 0) {
-        const response = await fetch('/api/leads', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ leads: leadsData }),
-        });
+      console.log("Saving CSV leads:", {
+        count: leadsData.length,
+        campaignId,
+        leadsData,
+      });
 
-        const data = await response.json();
-        if (data.success) {
-          console.log(`Saved ${data.count} CSV leads`);
-          toast.success('CSV Leads Saved', {
-            description: `Successfully imported ${data.count} lead${data.count !== 1 ? 's' : ''} from CSV`,
-          });
-        } else {
-          toast.error('Failed to Save CSV Leads', {
-            description: 'Please try again',
-          });
-        }
+      if (leadsData.length === 0) {
+        toast.warning("No Valid Leads", {
+          description: "Please ensure your CSV has lead names",
+        });
+        return;
+      }
+
+      const response = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leads: leadsData }),
+      });
+
+      const data = await response.json();
+      console.log("API response:", data);
+
+      if (data.success) {
+        console.log(`Saved ${data.count} CSV leads`);
+        toast.success("CSV Leads Saved", {
+          description: `Successfully imported ${data.count} lead${data.count !== 1 ? "s" : ""} from CSV`,
+        });
+      } else {
+        console.error("API returned error:", data);
+        toast.error("Failed to Save CSV Leads", {
+          description: data.details || data.error || "Please try again",
+        });
       }
     } catch (error) {
-      console.error('Error saving CSV leads:', error);
-      toast.error('Error', {
-        description: 'Failed to save CSV leads. Please try again.',
+      console.error("Error saving CSV leads:", error);
+      toast.error("Error", {
+        description: "Failed to save CSV leads. Check console for details.",
       });
     }
   };
@@ -471,9 +573,9 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     setIsAnalyzingLeads(true);
 
     try {
-      const response = await fetch('/api/analyze-leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/analyze-leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaign_id: campaignId }),
       });
 
@@ -484,28 +586,28 @@ export default function OnboardClient({ user }: OnboardClientProps) {
         const formattedLeads = data.analyzed_leads.map((lead: any) => ({
           id: lead.id,
           name: lead.name,
-          about: lead.about || '',
-          email: lead.email || '',
-          linkedin: lead.linkedin || '',
-          phone: lead.phone || '',
+          about: lead.about || "",
+          email: lead.email || "",
+          linkedin: lead.linkedin || "",
+          phone: lead.phone || "",
           fScore: lead.f_score || 50,
-          reason: lead.reason || 'Analysis in progress',
+          reason: lead.reason || "Analysis in progress",
         }));
 
         setAnalyzedLeads(formattedLeads);
 
-        toast.success('Leads Analyzed', {
+        toast.success("Leads Analyzed", {
           description: `AI analyzed ${data.count} leads with fit scores`,
         });
       } else {
-        toast.warning('No Leads Found', {
-          description: 'Please add leads in Step 2 first',
+        toast.warning("No Leads Found", {
+          description: "Please add leads in Step 2 first",
         });
       }
     } catch (error) {
-      console.error('Error analyzing leads:', error);
-      toast.error('Analysis Failed', {
-        description: 'Failed to analyze leads. Using basic scoring.',
+      console.error("Error analyzing leads:", error);
+      toast.error("Analysis Failed", {
+        description: "Failed to analyze leads. Using basic scoring.",
       });
     } finally {
       setIsAnalyzingLeads(false);
@@ -541,7 +643,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
   // Generate email body based on campaign data
   const generateEmailBody = () => {
-    let body = `Hi {name},\n\n`;
+    let body = `Hi,\n\n`;
     body += `I hope this message finds you well.\n\n`;
 
     if (campaignDescription) {
@@ -587,34 +689,34 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
   // Handle starting a call
   const handleStartCall = async (leadId: string) => {
-    const currentLead = analyzedLeads.find(l => l.id === leadId);
+    const currentLead = analyzedLeads.find((l) => l.id === leadId);
     setActiveCallLead(leadId);
     setCallModalOpen(true);
 
     // Create call log entry
     if (campaignId && currentLead) {
       try {
-        const response = await fetch('/api/call-logs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/api/call-logs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             campaign_id: campaignId,
             lead_id: leadId.toString(),
-            call_status: 'in_progress',
+            call_status: "in_progress",
             started_at: new Date().toISOString(),
           }),
         });
 
         const data = await response.json();
         if (data.success) {
-          toast.success('Call Started', {
+          toast.success("Call Started", {
             description: `Connected with ${currentLead.name}`,
           });
         }
       } catch (error) {
-        console.error('Error creating call log:', error);
-        toast.error('Error', {
-          description: 'Failed to start call log',
+        console.error("Error creating call log:", error);
+        toast.error("Error", {
+          description: "Failed to start call log",
         });
       }
     }
@@ -625,19 +727,19 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     // Update call log with end time and status
     if (campaignId && activeCallLead) {
       try {
-        const currentLead = analyzedLeads.find(l => l.id === activeCallLead);
+        const currentLead = analyzedLeads.find((l) => l.id === activeCallLead);
         if (currentLead) {
           // You would get the actual call_log_id from the previous POST response
           // For now, we'll just log the end event
-          console.log('Call ended for lead:', activeCallLead);
-          toast.info('Call Ended', {
+          console.log("Call ended for lead:", activeCallLead);
+          toast.info("Call Ended", {
             description: `Call with ${currentLead.name} has been recorded`,
           });
         }
       } catch (error) {
-        console.error('Error ending call:', error);
-        toast.error('Error', {
-          description: 'Failed to end call properly',
+        console.error("Error ending call:", error);
+        toast.error("Error", {
+          description: "Failed to end call properly",
         });
       }
     }
@@ -648,21 +750,23 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
   // Handle deal closed
   const handleDealClosed = () => {
-    const currentLead = analyzedLeads.find(l => l.id === activeCallLead);
+    const currentLead = analyzedLeads.find((l) => l.id === activeCallLead);
 
-    toast.success('Deal Closed!', {
-      description: currentLead ? `Successfully closed deal with ${currentLead.name}` : 'Deal marked as closed',
+    toast.success("Deal Closed!", {
+      description: currentLead
+        ? `Successfully closed deal with ${currentLead.name}`
+        : "Deal marked as closed",
     });
 
     // Navigate to dashboard
     setTimeout(() => {
-      router.push('/dashboard');
+      router.push("/dashboard");
     }, 1500);
   };
 
   // Get selected lead details
   const getSelectedLeadsWithDetails = () => {
-    return analyzedLeads.filter(lead => selectedLeads.includes(lead.id));
+    return analyzedLeads.filter((lead) => selectedLeads.includes(lead.id));
   };
 
   // Send email notification
@@ -750,9 +854,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
           <h1 className="text-3xl font-bold text-white mb-2">
             Welcome to CloseLoop AI
           </h1>
-          <p className="text-gray-400">
-            {getStepSubtitle()}
-          </p>
+          <p className="text-gray-400">{getStepSubtitle()}</p>
         </div>
 
         <Stepper
@@ -819,12 +921,16 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       {/* Status Badge */}
                       <div className="absolute left-4 top-4 flex items-center gap-2">
                         <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
-                          <span className="text-white text-xs font-medium">Alice - AI Phone Agent</span>
+                          <span className="text-white text-xs font-medium">
+                            Alice - AI Phone Agent
+                          </span>
                         </div>
                         <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
                           <div className="flex items-center gap-1">
                             <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
-                            <span className="text-[10px] font-medium text-white">Active</span>
+                            <span className="text-[10px] font-medium text-white">
+                              Active
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -847,90 +953,101 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                 {/* Form Content - Right Side */}
                 <div className="lg:col-span-8">
                   <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
-                    <h2 className="text-xl font-semibold text-white mb-4">
-                      Create Your Campaign
-                    </h2>
-                <div className="space-y-4">
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Campaign Name
-                      </label>
-                      <input
-                        type="text"
-                        value={campaignName}
-                        onChange={(e) => setCampaignName(e.target.value)}
-                        className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                        placeholder="Enter campaign name"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Campaign Type
-                      </label>
-                      <select
-                        value={campaignType}
-                        onChange={(e) => setCampaignType(e.target.value)}
-                        className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xl font-semibold text-white">
+                        Create Your Campaign
+                      </h2>
+                      <button
+                        onClick={prefillSampleData}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
+                        title="Prefill with sample ElevenLabs data"
                       >
-                        <option>Lead Generation</option>
-                        <option>Customer Engagement</option>
-                        <option>Product Launch</option>
-                        <option>Follow-up Campaign</option>
-                        <option>Revenue Growth</option>
-                      </select>
+                        Pre-Fill
+                      </button>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="flex gap-4">
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Campaign Name
+                          </label>
+                          <input
+                            type="text"
+                            value={campaignName}
+                            onChange={(e) => setCampaignName(e.target.value)}
+                            className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            placeholder="Enter campaign name"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Campaign Type
+                          </label>
+                          <select
+                            value={campaignType}
+                            onChange={(e) => setCampaignType(e.target.value)}
+                            className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          >
+                            <option>Lead Generation</option>
+                            <option>Customer Engagement</option>
+                            <option>Product Launch</option>
+                            <option>Follow-up Campaign</option>
+                            <option>Revenue Growth</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Campaign Description
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={campaignDescription}
+                          onChange={(e) =>
+                            setCampaignDescription(e.target.value)
+                          }
+                          className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          placeholder="Describe your campaign goals"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Product URL
+                        </label>
+                        <input
+                          type="url"
+                          value={productUrl}
+                          onChange={(e) => setProductUrl(e.target.value)}
+                          className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          placeholder="https://example.com"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Product About URL
+                        </label>
+                        <input
+                          type="url"
+                          value={productAboutUrl}
+                          onChange={(e) => setProductAboutUrl(e.target.value)}
+                          className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          placeholder="https://example.com/about"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Product Pricing URL
+                        </label>
+                        <input
+                          type="url"
+                          value={productPricingUrl}
+                          onChange={(e) => setProductPricingUrl(e.target.value)}
+                          className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          placeholder="https://example.com/pricing"
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Campaign Description
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={campaignDescription}
-                      onChange={(e) => setCampaignDescription(e.target.value)}
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="Describe your campaign goals"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Product URL
-                    </label>
-                    <input
-                      type="url"
-                      value={productUrl}
-                      onChange={(e) => setProductUrl(e.target.value)}
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="https://example.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Product About URL
-                    </label>
-                    <input
-                      type="url"
-                      value={productAboutUrl}
-                      onChange={(e) => setProductAboutUrl(e.target.value)}
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="https://example.com/about"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Product Pricing URL
-                    </label>
-                    <input
-                      type="url"
-                      value={productPricingUrl}
-                      onChange={(e) => setProductPricingUrl(e.target.value)}
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="https://example.com/pricing"
-                    />
-                  </div>
-                </div>
-              </div>
                 </div>
               </div>
             </StepperContent>
@@ -958,12 +1075,16 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       {/* Status Badge */}
                       <div className="absolute left-4 top-4 flex items-center gap-2">
                         <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
-                          <span className="text-white text-xs font-medium">Alice - AI Phone Agent</span>
+                          <span className="text-white text-xs font-medium">
+                            Alice - AI Phone Agent
+                          </span>
                         </div>
                         <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
                           <div className="flex items-center gap-1">
                             <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
-                            <span className="text-[10px] font-medium text-white">Active</span>
+                            <span className="text-[10px] font-medium text-white">
+                              Active
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -989,257 +1110,261 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                     <h2 className="text-xl font-semibold text-white mb-4">
                       Source Your Leads
                     </h2>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Lead Source
-                    </label>
-                    <select
-                      value={leadSource}
-                      onChange={(e) => setLeadSource(e.target.value)}
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option>Upload CSV</option>
-                      <option>Manual Entry</option>
-                    </select>
-                  </div>
-
-                  {leadSource === "Upload CSV" ? (
                     <div className="space-y-4">
-                      {/* File Upload Area */}
-                      <div
-                        onClick={() => fileInputRef.current?.click()}
-                        className="border-2 border-dashed border-zinc-700 rounded-lg p-8 text-center hover:border-gray-600 transition-colors cursor-pointer"
-                      >
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept=".csv"
-                          onChange={handleCsvFileSelect}
-                          className="hidden"
-                        />
-                        <div className="text-gray-400">
-                          {isUploadingCsv ? (
-                            <>
-                              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                              <p className="text-sm">Parsing CSV...</p>
-                            </>
-                          ) : csvFile ? (
-                            <>
-                              <Check className="h-8 w-8 text-green-500 mx-auto mb-2" />
-                              <p className="text-sm font-medium text-white">
-                                {csvFile.name}
-                              </p>
-                              <p className="text-xs mt-1">
-                                {csvLeads.length} leads found
-                              </p>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setCsvFile(null);
-                                  setCsvLeads([]);
-                                }}
-                                className="mt-2 text-xs text-orange-400 hover:text-orange-300"
-                              >
-                                Change file
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <p className="text-sm">
-                                Click to upload or drag and drop
-                              </p>
-                              <p className="text-xs mt-1">CSV (MAX. 10MB)</p>
-                            </>
-                          )}
-                        </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Lead Source
+                        </label>
+                        <select
+                          value={leadSource}
+                          onChange={(e) => setLeadSource(e.target.value)}
+                          className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        >
+                          <option>Upload CSV</option>
+                          <option>Manual Entry</option>
+                        </select>
                       </div>
 
-                      {/* CSV Preview */}
-                      {csvLeads.length > 0 && (
-                        <div className="bg-zinc-800 rounded-lg p-4">
-                          <h3 className="text-sm font-medium text-white mb-3">
-                            Preview ({csvLeads.length} leads)
-                          </h3>
-                          <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                            <table className="w-full text-sm">
-                              <thead className="sticky top-0 bg-zinc-800">
+                      {leadSource === "Upload CSV" ? (
+                        <div className="space-y-4">
+                          {/* File Upload Area */}
+                          <div
+                            onClick={() => fileInputRef.current?.click()}
+                            className="border-2 border-dashed border-zinc-700 rounded-lg p-8 text-center hover:border-gray-600 transition-colors cursor-pointer"
+                          >
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept=".csv"
+                              onChange={handleCsvFileSelect}
+                              className="hidden"
+                            />
+                            <div className="text-gray-400">
+                              {isUploadingCsv ? (
+                                <>
+                                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                                  <p className="text-sm">Parsing CSV...</p>
+                                </>
+                              ) : csvFile ? (
+                                <>
+                                  <Check className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                                  <p className="text-sm font-medium text-white">
+                                    {csvFile.name}
+                                  </p>
+                                  <p className="text-xs mt-1">
+                                    {csvLeads.length} leads found
+                                  </p>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCsvFile(null);
+                                      setCsvLeads([]);
+                                    }}
+                                    className="mt-2 text-xs text-orange-400 hover:text-orange-300"
+                                  >
+                                    Change file
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="text-sm">
+                                    Click to upload or drag and drop
+                                  </p>
+                                  <p className="text-xs mt-1">
+                                    CSV (MAX. 10MB)
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* CSV Preview */}
+                          {csvLeads.length > 0 && (
+                            <div className="bg-zinc-800 rounded-lg p-4">
+                              <h3 className="text-sm font-medium text-white mb-3">
+                                Preview ({csvLeads.length} leads)
+                              </h3>
+                              <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                                <table className="w-full text-sm">
+                                  <thead className="sticky top-0 bg-zinc-800">
+                                    <tr className="border-b border-zinc-700">
+                                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                        Name
+                                      </th>
+                                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                        About
+                                      </th>
+                                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                        Email
+                                      </th>
+                                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                        Phone
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {csvLeads.slice(0, 5).map((lead, index) => (
+                                      <tr
+                                        key={index}
+                                        className="border-b border-zinc-700/50"
+                                      >
+                                        <td className="py-2 px-3 text-white">
+                                          {lead.name}
+                                        </td>
+                                        <td className="py-2 px-3 text-gray-400 truncate max-w-[200px]">
+                                          {lead.about}
+                                        </td>
+                                        <td className="py-2 px-3 text-gray-400">
+                                          {lead.email}
+                                        </td>
+                                        <td className="py-2 px-3 text-gray-400">
+                                          {lead.phone}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                                {csvLeads.length > 5 && (
+                                  <p className="text-xs text-gray-500 mt-2 text-center">
+                                    + {csvLeads.length - 5} more leads
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead>
                                 <tr className="border-b border-zinc-700">
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
                                     Name
                                   </th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
                                     About
                                   </th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
-                                    Email
+                                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
+                                    LinkedIn
                                   </th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
-                                    Phone
+                                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
+                                    Twitter
                                   </th>
+                                  <th className="w-12"></th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {csvLeads.slice(0, 5).map((lead, index) => (
+                                {manualLeads.map((lead) => (
                                   <tr
-                                    key={index}
-                                    className="border-b border-zinc-700/50"
+                                    key={lead.id}
+                                    className="border-b border-zinc-800"
                                   >
-                                    <td className="py-2 px-3 text-white">
-                                      {lead.name}
+                                    <td className="py-2 px-4">
+                                      <input
+                                        type="text"
+                                        value={lead.name}
+                                        onChange={(e) =>
+                                          updateManualLead(
+                                            lead.id,
+                                            "name",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                        placeholder="John Doe"
+                                      />
                                     </td>
-                                    <td className="py-2 px-3 text-gray-400 truncate max-w-[200px]">
-                                      {lead.about}
+                                    <td className="py-2 px-4">
+                                      <input
+                                        type="text"
+                                        value={lead.about}
+                                        onChange={(e) =>
+                                          updateManualLead(
+                                            lead.id,
+                                            "about",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                        placeholder="Software Engineer"
+                                      />
                                     </td>
-                                    <td className="py-2 px-3 text-gray-400">
-                                      {lead.email}
+                                    <td className="py-2 px-4">
+                                      <input
+                                        type="text"
+                                        value={lead.linkedin}
+                                        onChange={(e) =>
+                                          updateManualLead(
+                                            lead.id,
+                                            "linkedin",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                        placeholder="linkedin.com/in/..."
+                                      />
                                     </td>
-                                    <td className="py-2 px-3 text-gray-400">
-                                      {lead.phone}
+                                    <td className="py-2 px-4">
+                                      <input
+                                        type="text"
+                                        value={lead.twitter}
+                                        onChange={(e) =>
+                                          updateManualLead(
+                                            lead.id,
+                                            "twitter",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                        placeholder="@username"
+                                      />
+                                    </td>
+                                    <td className="py-2 px-4">
+                                      <button
+                                        onClick={() =>
+                                          removeManualLead(lead.id)
+                                        }
+                                        className="text-red-400 hover:text-red-300 transition-colors"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
                                     </td>
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
-                            {csvLeads.length > 5 && (
-                              <p className="text-xs text-gray-500 mt-2 text-center">
-                                + {csvLeads.length - 5} more leads
-                              </p>
-                            )}
                           </div>
+                          <button
+                            onClick={addManualLead}
+                            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Row
+                          </button>
                         </div>
                       )}
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="border-b border-zinc-700">
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                                Name
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                                About
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                                LinkedIn
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                                Twitter
-                              </th>
-                              <th className="w-12"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {manualLeads.map((lead) => (
-                              <tr
-                                key={lead.id}
-                                className="border-b border-zinc-800"
-                              >
-                                <td className="py-2 px-4">
-                                  <input
-                                    type="text"
-                                    value={lead.name}
-                                    onChange={(e) =>
-                                      updateManualLead(
-                                        lead.id,
-                                        "name",
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                    placeholder="John Doe"
-                                  />
-                                </td>
-                                <td className="py-2 px-4">
-                                  <input
-                                    type="text"
-                                    value={lead.about}
-                                    onChange={(e) =>
-                                      updateManualLead(
-                                        lead.id,
-                                        "about",
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                    placeholder="Software Engineer"
-                                  />
-                                </td>
-                                <td className="py-2 px-4">
-                                  <input
-                                    type="text"
-                                    value={lead.linkedin}
-                                    onChange={(e) =>
-                                      updateManualLead(
-                                        lead.id,
-                                        "linkedin",
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                    placeholder="linkedin.com/in/..."
-                                  />
-                                </td>
-                                <td className="py-2 px-4">
-                                  <input
-                                    type="text"
-                                    value={lead.twitter}
-                                    onChange={(e) =>
-                                      updateManualLead(
-                                        lead.id,
-                                        "twitter",
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                    placeholder="@username"
-                                  />
-                                </td>
-                                <td className="py-2 px-4">
-                                  <button
-                                    onClick={() => removeManualLead(lead.id)}
-                                    className="text-red-400 hover:text-red-300 transition-colors"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <button
-                        onClick={addManualLead}
-                        className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Row
-                      </button>
-                    </div>
-                  )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Lead Enrichment
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="enrichment"
-                        className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded"
-                      />
-                      <label
-                        htmlFor="enrichment"
-                        className="text-sm text-gray-300"
-                      >
-                        Automatically enrich lead data with additional
-                        information
-                      </label>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Lead Enrichment
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="enrichment"
+                            className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded"
+                          />
+                          <label
+                            htmlFor="enrichment"
+                            className="text-sm text-gray-300"
+                          >
+                            Automatically enrich lead data with additional
+                            information
+                          </label>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
                   </div>
                 </div>
               </div>
@@ -1268,12 +1393,16 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       {/* Status Badge */}
                       <div className="absolute left-4 top-4 flex items-center gap-2">
                         <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
-                          <span className="text-white text-xs font-medium">Alice - AI Phone Agent</span>
+                          <span className="text-white text-xs font-medium">
+                            Alice - AI Phone Agent
+                          </span>
                         </div>
                         <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
                           <div className="flex items-center gap-1">
                             <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
-                            <span className="text-[10px] font-medium text-white">Active</span>
+                            <span className="text-[10px] font-medium text-white">
+                              Active
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1300,182 +1429,193 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       Select Your Target Leads
                     </h2>
 
-                {isAnalyzingLeads ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <Loader2 className="h-12 w-12 animate-spin text-orange-500 mb-4" />
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      Analyzing Leads with AI
-                    </h3>
-                    <p className="text-gray-400 text-sm text-center max-w-md">
-                      Claude AI is analyzing each lead profile against your campaign details to calculate fit scores...
-                    </p>
-                  </div>
-                ) : analyzedLeads.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <Users className="h-12 w-12 text-gray-600 mb-4" />
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      No Leads Found
-                    </h3>
-                    <p className="text-gray-400 text-sm text-center max-w-md mb-4">
-                      Please go back to Step 2 and add some leads first
-                    </p>
-                    <button
-                      onClick={() => setActiveStep(2)}
-                      className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-                    >
-                      Go to Source Leads
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                  {/* Metrics */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-zinc-800 rounded-lg p-4">
-                      <p className="text-sm text-gray-400 mb-1">
-                        Total Leads Sourced
-                      </p>
-                      <p className="text-2xl font-bold text-white">
-                        {manualLeads.filter((l) => l.name).length}
-                      </p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-lg p-4">
-                      <p className="text-sm text-gray-400 mb-1">
-                        Total Matched Leads
-                      </p>
-                      <p className="text-2xl font-bold text-white">
-                        {analyzedLeads.length}
-                      </p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-lg p-4">
-                      <p className="text-sm text-gray-400 mb-1">
-                        Suggested Leads
-                      </p>
-                      <p className="text-2xl font-bold text-orange-500">
-                        {analyzedLeads.length}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Leads Table */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-zinc-700">
-                          <th className="text-left py-3 px-4 w-12">
-                            <input
-                              type="checkbox"
-                              checked={
-                                selectedLeads.length === analyzedLeads.length
+                    {isAnalyzingLeads ? (
+                      <div className="flex flex-col items-center justify-center py-16">
+                        <Loader2 className="h-12 w-12 animate-spin text-orange-500 mb-4" />
+                        <h3 className="text-lg font-semibold text-white mb-2">
+                          Analyzing Leads with AI
+                        </h3>
+                        <p className="text-gray-400 text-sm text-center max-w-md">
+                          Claude AI is analyzing each lead profile against your
+                          campaign details to calculate fit scores...
+                        </p>
+                      </div>
+                    ) : analyzedLeads.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16">
+                        <Users className="h-12 w-12 text-gray-600 mb-4" />
+                        <h3 className="text-lg font-semibold text-white mb-2">
+                          No Leads Found
+                        </h3>
+                        <p className="text-gray-400 text-sm text-center max-w-md mb-4">
+                          Please go back to Step 2 and add some leads first
+                        </p>
+                        <button
+                          onClick={() => setActiveStep(2)}
+                          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                        >
+                          Go to Source Leads
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Metrics */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="bg-zinc-800 rounded-lg p-4">
+                            <p className="text-sm text-gray-400 mb-1">
+                              Total Leads Sourced
+                            </p>
+                            <p className="text-2xl font-bold text-white">
+                              {analyzedLeads.length}
+                            </p>
+                          </div>
+                          <div className="bg-zinc-800 rounded-lg p-4">
+                            <p className="text-sm text-gray-400 mb-1">
+                              Total Matched Leads
+                            </p>
+                            <p className="text-2xl font-bold text-white">
+                              {
+                                analyzedLeads.filter((lead) => lead.fScore > 49)
+                                  .length
                               }
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedLeads(
-                                    analyzedLeads.map((l) => l.id),
-                                  );
-                                } else {
-                                  setSelectedLeads([]);
-                                }
-                              }}
-                              className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded cursor-pointer"
-                            />
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                            Name
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                            About
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                            Email
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                            LinkedIn
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                            Phone Number
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
-                            F-Score
-                          </th>
-                          <th className="w-8"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {analyzedLeads.map((lead) => (
-                          <tr
-                            key={lead.id}
-                            className="border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors"
-                          >
-                            <td className="py-3 px-4">
-                              <input
-                                type="checkbox"
-                                checked={selectedLeads.includes(lead.id)}
-                                onChange={() => toggleLeadSelection(lead.id)}
-                                className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded cursor-pointer"
-                              />
-                            </td>
-                            <td className="py-3 px-4 text-sm text-white font-medium">
-                              {lead.name}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-300">
-                              {lead.about}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-300">
-                              {lead.email}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-orange-400">
-                              <a
-                                href={`https://${lead.linkedin}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="hover:underline"
-                              >
-                                {lead.linkedin}
-                              </a>
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-300">
-                              {lead.phone}
-                            </td>
-                            <td className="py-3 px-4 text-sm">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  lead.fScore >= 90
-                                    ? "bg-green-900/30 text-green-400"
-                                    : lead.fScore >= 85
-                                      ? "bg-orange-900/30 text-orange-400"
-                                      : "bg-yellow-900/30 text-yellow-400"
-                                }`}
-                              >
-                                {lead.fScore}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="group relative">
-                                <Info className="h-4 w-4 text-gray-400 cursor-help" />
-                                <div className="absolute right-0 top-6 w-64 p-3 bg-zinc-950 border border-zinc-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                                  <p className="text-xs text-gray-300">
-                                    {lead.reason}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                            </p>
+                          </div>
+                          <div className="bg-zinc-800 rounded-lg p-4">
+                            <p className="text-sm text-gray-400 mb-1">
+                              Suggested Leads
+                            </p>
+                            <p className="text-2xl font-bold text-orange-500">
+                              {
+                                analyzedLeads.filter(
+                                  (lead) => lead.fScore >= 90,
+                                ).length
+                              }
+                            </p>
+                          </div>
+                        </div>
 
-                  {/* Selected Count */}
-                  {selectedLeads.length > 0 && (
-                    <div className="bg-orange-900/20 border border-orange-800 rounded-lg p-3">
-                      <p className="text-sm text-orange-300">
-                        {selectedLeads.length} lead
-                        {selectedLeads.length !== 1 ? "s" : ""} selected
-                      </p>
-                    </div>
-                  )}
-                </div>
-                )}
+                        {/* Leads Table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead>
+                              <tr className="border-b border-zinc-700">
+                                <th className="text-left py-3 px-4 w-12">
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      selectedLeads.length ===
+                                      analyzedLeads.length
+                                    }
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedLeads(
+                                          analyzedLeads.map((l) => l.id),
+                                        );
+                                      } else {
+                                        setSelectedLeads([]);
+                                      }
+                                    }}
+                                    className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded cursor-pointer"
+                                  />
+                                </th>
+                                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
+                                  Name
+                                </th>
+                                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
+                                  About
+                                </th>
+                                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
+                                  Email
+                                </th>
+                                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
+                                  LinkedIn
+                                </th>
+                                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
+                                  Phone Number
+                                </th>
+                                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
+                                  F-Score
+                                </th>
+                                <th className="w-8"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {analyzedLeads.map((lead) => (
+                                <tr
+                                  key={lead.id}
+                                  className="border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors"
+                                >
+                                  <td className="py-3 px-4">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedLeads.includes(lead.id)}
+                                      onChange={() =>
+                                        toggleLeadSelection(lead.id)
+                                      }
+                                      className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded cursor-pointer"
+                                    />
+                                  </td>
+                                  <td className="py-3 px-4 text-sm text-white font-medium">
+                                    {lead.name}
+                                  </td>
+                                  <td className="py-3 px-4 text-sm text-gray-300">
+                                    {lead.about}
+                                  </td>
+                                  <td className="py-3 px-4 text-sm text-gray-300">
+                                    {lead.email}
+                                  </td>
+                                  <td className="py-3 px-4 text-sm text-orange-400">
+                                    <a
+                                      href={`https://${lead.linkedin}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="hover:underline"
+                                    >
+                                      {lead.linkedin}
+                                    </a>
+                                  </td>
+                                  <td className="py-3 px-4 text-sm text-gray-300">
+                                    {lead.phone}
+                                  </td>
+                                  <td className="py-3 px-4 text-sm">
+                                    <span
+                                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                        lead.fScore >= 90
+                                          ? "bg-green-900/30 text-green-400"
+                                          : lead.fScore >= 85
+                                            ? "bg-orange-900/30 text-orange-400"
+                                            : "bg-yellow-900/30 text-yellow-400"
+                                      }`}
+                                    >
+                                      {lead.fScore}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="group relative">
+                                      <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                                      <div className="absolute right-0 top-6 w-64 p-3 bg-zinc-950 border border-zinc-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                                        <p className="text-xs text-gray-300">
+                                          {lead.reason}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Selected Count */}
+                        {selectedLeads.length > 0 && (
+                          <div className="bg-orange-900/20 border border-orange-800 rounded-lg p-3">
+                            <p className="text-sm text-orange-300">
+                              {selectedLeads.length} lead
+                              {selectedLeads.length !== 1 ? "s" : ""} selected
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1504,12 +1644,16 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       {/* Status Badge */}
                       <div className="absolute left-4 top-4 flex items-center gap-2">
                         <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
-                          <span className="text-white text-xs font-medium">Julian - AI Leads Agent</span>
+                          <span className="text-white text-xs font-medium">
+                            Julian - AI Leads Agent
+                          </span>
                         </div>
                         <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
                           <div className="flex items-center gap-1">
                             <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
-                            <span className="text-[10px] font-medium text-white">Active</span>
+                            <span className="text-[10px] font-medium text-white">
+                              Active
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1535,114 +1679,117 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                     <h2 className="text-xl font-semibold text-white mb-4">
                       Configure Email Outreach
                     </h2>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Email Subject
-                    </label>
-                    <input
-                      type="text"
-                      value={emailSubject}
-                      onChange={(e) => setEmailSubject(e.target.value)}
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="Enter email subject"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Email Body
-                    </label>
-                    <textarea
-                      rows={6}
-                      value={emailBody}
-                      onChange={(e) => setEmailBody(e.target.value)}
-                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="Write your email message..."
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Use variables: {"{"}name{"}"}, {"{"}company{"}"}, {"{"}
-                      title{"}"}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Send Time
-                      </label>
-                      <select className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500">
-                        <option>Immediately</option>
-                        <option>Schedule for later</option>
-                        <option>Best time per recipient</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Follow-up
-                      </label>
-                      <select className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500">
-                        <option>No follow-up</option>
-                        <option>After 3 days</option>
-                        <option>After 7 days</option>
-                        <option>Custom schedule</option>
-                      </select>
-                    </div>
-                  </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Email Subject
+                        </label>
+                        <input
+                          type="text"
+                          value={emailSubject}
+                          onChange={(e) => setEmailSubject(e.target.value)}
+                          className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          placeholder="Enter email subject"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Email Body
+                        </label>
+                        <textarea
+                          rows={6}
+                          value={emailBody}
+                          onChange={(e) => setEmailBody(e.target.value)}
+                          className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          placeholder="Write your email message..."
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Use variables: {"{"}name{"}"}, {"{"}company{"}"},{" "}
+                          {"{"}
+                          title{"}"}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Send Time
+                          </label>
+                          <select className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <option>Immediately</option>
+                            <option>Schedule for later</option>
+                            <option>Best time per recipient</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Follow-up
+                          </label>
+                          <select className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <option>No follow-up</option>
+                            <option>After 3 days</option>
+                            <option>After 7 days</option>
+                            <option>Custom schedule</option>
+                          </select>
+                        </div>
+                      </div>
 
-                  {/* Send Email Notification Button */}
-                  <div className="mt-6 pt-6 border-t border-zinc-700">
-                    <div className="bg-zinc-800 rounded-lg p-4 mb-4">
-                      <h3 className="text-sm font-medium text-white mb-2">
-                        📧 Campaign Notification
-                      </h3>
-                      <p className="text-xs text-gray-400 mb-3">
-                        Send campaign details with product information to your
-                        team via email
-                      </p>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <Mail className="h-3.5 w-3.5" />
-                        <span>
-                          Recipients: shreyansh.saurabh0107@gmail.com,
-                          binaryshrey@gmail.com
-                        </span>
+                      {/* Send Email Notification Button */}
+                      <div className="mt-6 pt-6 border-t border-zinc-700">
+                        <div className="bg-zinc-800 rounded-lg p-4 mb-4">
+                          <h3 className="text-sm font-medium text-white mb-2">
+                            📧 Campaign Notification
+                          </h3>
+                          <p className="text-xs text-gray-400 mb-3">
+                            Send campaign details with product information to
+                            your team via email
+                          </p>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <Mail className="h-3.5 w-3.5" />
+                            <span>
+                              Recipients: shreyansh.saurabh0107@gmail.com,
+                              binaryshrey@gmail.com
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleSendEmail}
+                          disabled={
+                            isSendingEmail || emailSent || !campaignName
+                          }
+                          className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
+                            emailSent
+                              ? "bg-green-600 text-white cursor-not-allowed"
+                              : isSendingEmail
+                                ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+                                : campaignName
+                                  ? "bg-orange-600 text-white hover:bg-orange-700"
+                                  : "bg-gray-700 text-gray-500 cursor-not-allowed"
+                          }`}
+                        >
+                          {isSendingEmail ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Sending Email...
+                            </>
+                          ) : emailSent ? (
+                            <>
+                              <Check className="h-4 w-4" />
+                              Email Sent Successfully
+                            </>
+                          ) : (
+                            <>
+                              <Send className="h-4 w-4" />
+                              Send Campaign Notification
+                            </>
+                          )}
+                        </button>
+                        {!campaignName && (
+                          <p className="text-xs text-yellow-500 mt-2 text-center">
+                            Please enter a campaign name first
+                          </p>
+                        )}
                       </div>
                     </div>
-                    <button
-                      onClick={handleSendEmail}
-                      disabled={isSendingEmail || emailSent || !campaignName}
-                      className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
-                        emailSent
-                          ? "bg-green-600 text-white cursor-not-allowed"
-                          : isSendingEmail
-                            ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                            : campaignName
-                              ? "bg-orange-600 text-white hover:bg-orange-700"
-                              : "bg-gray-700 text-gray-500 cursor-not-allowed"
-                      }`}
-                    >
-                      {isSendingEmail ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Sending Email...
-                        </>
-                      ) : emailSent ? (
-                        <>
-                          <Check className="h-4 w-4" />
-                          Email Sent Successfully
-                        </>
-                      ) : (
-                        <>
-                          <Send className="h-4 w-4" />
-                          Send Campaign Notification
-                        </>
-                      )}
-                    </button>
-                    {!campaignName && (
-                      <p className="text-xs text-yellow-500 mt-2 text-center">
-                        Please enter a campaign name first
-                      </p>
-                    )}
-                  </div>
-                </div>
                   </div>
                 </div>
               </div>
@@ -1671,12 +1818,16 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       {/* Status Badge */}
                       <div className="absolute left-4 top-4 flex items-center gap-2">
                         <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
-                          <span className="text-white text-xs font-medium">Julian - AI Leads Agent</span>
+                          <span className="text-white text-xs font-medium">
+                            Julian - AI Leads Agent
+                          </span>
                         </div>
                         <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
                           <div className="flex items-center gap-1">
                             <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
-                            <span className="text-[10px] font-medium text-white">Active</span>
+                            <span className="text-[10px] font-medium text-white">
+                              Active
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1700,84 +1851,96 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                 <div className="lg:col-span-8">
                   <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
                     <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h2 className="text-xl font-semibold text-white mb-1">
-                      Call Center
-                    </h2>
-                    <p className="text-sm text-gray-400">
-                      {getSelectedLeadsWithDetails().length} lead{getSelectedLeadsWithDetails().length !== 1 ? "s" : ""} ready to call
-                    </p>
-                  </div>
-                  <div className="bg-zinc-800 rounded-lg px-4 py-2">
-                    <p className="text-xs text-gray-400">Campaign</p>
-                    <p className="text-sm font-semibold text-white">{campaignName || "Untitled Campaign"}</p>
-                  </div>
-                </div>
+                      <div>
+                        <h2 className="text-xl font-semibold text-white mb-1">
+                          Call Center
+                        </h2>
+                        <p className="text-sm text-gray-400">
+                          {getSelectedLeadsWithDetails().length} lead
+                          {getSelectedLeadsWithDetails().length !== 1
+                            ? "s"
+                            : ""}{" "}
+                          ready to call
+                        </p>
+                      </div>
+                      <div className="bg-zinc-800 rounded-lg px-4 py-2">
+                        <p className="text-xs text-gray-400">Campaign</p>
+                        <p className="text-sm font-semibold text-white">
+                          {campaignName || "Untitled Campaign"}
+                        </p>
+                      </div>
+                    </div>
 
-                {getSelectedLeadsWithDetails().length === 0 ? (
-                  <div className="bg-zinc-800/50 rounded-lg p-12 text-center">
-                    <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-white mb-2">No Leads Selected</h3>
-                    <p className="text-gray-400 text-sm mb-4">
-                      Please go back to Step 3 and select leads to call
-                    </p>
-                    <button
-                      onClick={() => setActiveStep(3)}
-                      className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-                    >
-                      Go to Select Leads
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {getSelectedLeadsWithDetails().map((lead) => (
-                      <div
-                        key={lead.id}
-                        className="bg-zinc-800 rounded-lg p-4 flex items-center justify-between hover:bg-zinc-800/80 transition-colors"
-                      >
-                        <div className="flex items-center gap-4 flex-1">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white font-semibold text-lg">
-                            {lead.name.charAt(0)}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="text-white font-semibold">{lead.name}</h3>
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  lead.fScore >= 90
-                                    ? "bg-green-900/30 text-green-400"
-                                    : lead.fScore >= 85
-                                      ? "bg-orange-900/30 text-orange-400"
-                                      : "bg-yellow-900/30 text-yellow-400"
-                                }`}
-                              >
-                                F-Score: {lead.fScore}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-400">{lead.about}</p>
-                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                              <span className="flex items-center gap-1">
-                                <Phone className="h-3 w-3" />
-                                {lead.phone}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Mail className="h-3 w-3" />
-                                {lead.email}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                    {getSelectedLeadsWithDetails().length === 0 ? (
+                      <div className="bg-zinc-800/50 rounded-lg p-12 text-center">
+                        <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold text-white mb-2">
+                          No Leads Selected
+                        </h3>
+                        <p className="text-gray-400 text-sm mb-4">
+                          Please go back to Step 3 and select leads to call
+                        </p>
                         <button
-                          onClick={() => handleStartCall(lead.id)}
-                          className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                          onClick={() => setActiveStep(3)}
+                          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
                         >
-                          <Phone className="h-4 w-4" />
-                          Call Now
+                          Go to Select Leads
                         </button>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    ) : (
+                      <div className="space-y-3">
+                        {getSelectedLeadsWithDetails().map((lead) => (
+                          <div
+                            key={lead.id}
+                            className="bg-zinc-800 rounded-lg p-4 flex items-center justify-between hover:bg-zinc-800/80 transition-colors"
+                          >
+                            <div className="flex items-center gap-4 flex-1">
+                              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white font-semibold text-lg">
+                                {lead.name.charAt(0)}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="text-white font-semibold">
+                                    {lead.name}
+                                  </h3>
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      lead.fScore >= 90
+                                        ? "bg-green-900/30 text-green-400"
+                                        : lead.fScore >= 85
+                                          ? "bg-orange-900/30 text-orange-400"
+                                          : "bg-yellow-900/30 text-yellow-400"
+                                    }`}
+                                  >
+                                    F-Score: {lead.fScore}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-400">
+                                  {lead.about}
+                                </p>
+                                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                                  <span className="flex items-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    {lead.phone}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Mail className="h-3 w-3" />
+                                    {lead.email}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleStartCall(lead.id)}
+                              className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                            >
+                              <Phone className="h-4 w-4" />
+                              Call Now
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1787,7 +1950,9 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                   <div className="bg-zinc-900 rounded-xl border border-zinc-800 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
                     {(() => {
-                      const currentLead = analyzedLeads.find(l => l.id === activeCallLead);
+                      const currentLead = analyzedLeads.find(
+                        (l) => l.id === activeCallLead,
+                      );
                       if (!currentLead) return null;
 
                       return (
@@ -1800,8 +1965,12 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                   {currentLead.name.charAt(0)}
                                 </div>
                                 <div>
-                                  <h2 className="text-2xl font-bold text-white mb-1">{currentLead.name}</h2>
-                                  <p className="text-gray-400 text-sm">{currentLead.about}</p>
+                                  <h2 className="text-2xl font-bold text-white mb-1">
+                                    {currentLead.name}
+                                  </h2>
+                                  <p className="text-gray-400 text-sm">
+                                    {currentLead.about}
+                                  </p>
                                   <p className="text-gray-500 text-xs mt-1 flex items-center gap-2">
                                     <Phone className="h-3 w-3" />
                                     {currentLead.phone}
@@ -1822,7 +1991,9 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                             <div className="grid grid-cols-3 gap-6 mb-6">
                               {/* Live Waveform */}
                               <div className="col-span-2 bg-zinc-800 rounded-lg p-6 border border-zinc-700">
-                                <h3 className="text-sm font-medium text-gray-300 mb-4">Live Audio Activity</h3>
+                                <h3 className="text-sm font-medium text-gray-300 mb-4">
+                                  Live Audio Activity
+                                </h3>
                                 <div className="h-32 flex items-center justify-center gap-1">
                                   {[...Array(50)].map((_, i) => (
                                     <div
@@ -1837,14 +2008,18 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                 </div>
                                 <div className="flex items-center justify-between mt-4 text-xs text-gray-500">
                                   <span>00:00</span>
-                                  <span className="text-orange-400 font-medium">● Recording</span>
+                                  <span className="text-orange-400 font-medium">
+                                    ● Recording
+                                  </span>
                                   <span>02:34</span>
                                 </div>
                               </div>
 
                               {/* Confidence Score Pie Chart */}
                               <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
-                                <h3 className="text-sm font-medium text-gray-300 mb-4">Confidence Score</h3>
+                                <h3 className="text-sm font-medium text-gray-300 mb-4">
+                                  Confidence Score
+                                </h3>
                                 <div className="relative w-40 h-40 mx-auto">
                                   <svg className="w-full h-full transform -rotate-90">
                                     <circle
@@ -1868,8 +2043,12 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                     />
                                   </svg>
                                   <div className="absolute inset-0 flex items-center justify-center flex-col">
-                                    <span className="text-4xl font-bold text-white">{currentLead.fScore}%</span>
-                                    <span className="text-xs text-gray-400">Confidence</span>
+                                    <span className="text-4xl font-bold text-white">
+                                      {currentLead.fScore}%
+                                    </span>
+                                    <span className="text-xs text-gray-400">
+                                      Confidence
+                                    </span>
                                   </div>
                                 </div>
                                 {currentLead.fScore >= 80 && (
@@ -1885,28 +2064,53 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
                             {/* Live Transcript */}
                             <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
-                              <h3 className="text-sm font-medium text-gray-300 mb-4">Live Transcript</h3>
+                              <h3 className="text-sm font-medium text-gray-300 mb-4">
+                                Live Transcript
+                              </h3>
                               <div className="space-y-3 max-h-64 overflow-y-auto">
                                 <div className="flex flex-col gap-1 items-start">
-                                  <span className="text-xs text-gray-500">AI Agent</span>
+                                  <span className="text-xs text-gray-500">
+                                    AI Agent
+                                  </span>
                                   <div className="px-4 py-2 rounded-lg max-w-[80%] bg-orange-900/30 text-orange-100">
-                                    <p className="text-sm">Hello! I'm calling from {campaignName || "our company"}. How are you today?</p>
+                                    <p className="text-sm">
+                                      Hello! I'm calling from{" "}
+                                      {campaignName || "our company"}. How are
+                                      you today?
+                                    </p>
                                   </div>
-                                  <span className="text-xs text-gray-600">Just now</span>
+                                  <span className="text-xs text-gray-600">
+                                    Just now
+                                  </span>
                                 </div>
                                 <div className="flex flex-col gap-1 items-end">
-                                  <span className="text-xs text-gray-500">Prospect</span>
+                                  <span className="text-xs text-gray-500">
+                                    Prospect
+                                  </span>
                                   <div className="px-4 py-2 rounded-lg max-w-[80%] bg-zinc-700 text-gray-100">
-                                    <p className="text-sm">Hi, I'm doing well. What can I do for you?</p>
+                                    <p className="text-sm">
+                                      Hi, I'm doing well. What can I do for you?
+                                    </p>
                                   </div>
-                                  <span className="text-xs text-gray-600">Just now</span>
+                                  <span className="text-xs text-gray-600">
+                                    Just now
+                                  </span>
                                 </div>
                                 <div className="flex flex-col gap-1 items-start">
-                                  <span className="text-xs text-gray-500">AI Agent</span>
+                                  <span className="text-xs text-gray-500">
+                                    AI Agent
+                                  </span>
                                   <div className="px-4 py-2 rounded-lg max-w-[80%] bg-orange-900/30 text-orange-100">
-                                    <p className="text-sm">I wanted to share information about our solution that can help increase your conversion rates. Would you be interested in learning more?</p>
+                                    <p className="text-sm">
+                                      I wanted to share information about our
+                                      solution that can help increase your
+                                      conversion rates. Would you be interested
+                                      in learning more?
+                                    </p>
                                   </div>
-                                  <span className="text-xs text-gray-600">Just now</span>
+                                  <span className="text-xs text-gray-600">
+                                    Just now
+                                  </span>
                                 </div>
                               </div>
                             </div>
