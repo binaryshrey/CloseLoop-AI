@@ -185,7 +185,7 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
   return (
     <div className="space-y-6">
       {/* Call Controls */}
-      <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+      <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-white">Call Control</h3>
@@ -229,9 +229,9 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
       {isCallActive && currentAnalysis && (
         <div className="grid grid-cols-2 gap-4">
           {/* Confidence Score */}
-          <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
             <div className="flex items-center gap-2 mb-3">
-              <TrendingUp className="h-5 w-5 text-blue-400" />
+              <TrendingUp className="h-5 w-5 text-orange-400" />
               <h4 className="text-sm font-medium text-gray-300">Confidence Score</h4>
             </div>
             <div className={`text-4xl font-bold ${getConfidenceColor(currentAnalysis.confidenceScore)}`}>
@@ -241,7 +241,7 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
           </div>
 
           {/* Sentiment */}
-          <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
             <div className="flex items-center gap-2 mb-3">
               <Activity className="h-5 w-5 text-purple-400" />
               <h4 className="text-sm font-medium text-gray-300">Sentiment</h4>
@@ -256,7 +256,7 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
 
       {/* Key Signals */}
       {isCallActive && currentAnalysis && currentAnalysis.signals.length > 0 && (
-        <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle className="h-5 w-5 text-yellow-400" />
             <h4 className="text-sm font-medium text-gray-300">Key Signals</h4>
@@ -274,9 +274,9 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
 
       {/* Live Transcript */}
       {isCallActive && (
-        <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Mic className="h-5 w-5 text-blue-400" />
+            <Mic className="h-5 w-5 text-orange-400" />
             <h4 className="text-sm font-medium text-gray-300">Live Transcript</h4>
           </div>
 
@@ -299,8 +299,8 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
                   <div
                     className={`px-4 py-2 rounded-lg max-w-[80%] ${
                       entry.speaker === 'agent'
-                        ? 'bg-blue-900/30 text-blue-100'
-                        : 'bg-gray-800 text-gray-100'
+                        ? 'bg-orange-900/30 text-orange-100'
+                        : 'bg-zinc-800 text-gray-100'
                     }`}
                   >
                     <p className="text-sm">{entry.text}</p>

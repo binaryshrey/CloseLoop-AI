@@ -15,14 +15,53 @@ import {
   StepperContent,
   StepperPanel,
 } from "@/components/ui/stepper";
-import { Check, ChevronRight, ChevronLeft, Megaphone, Users, Target, Mail, Phone, Plus, Trash2, Info, Send, Loader2 } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  ChevronLeft,
+  Megaphone,
+  Users,
+  Target,
+  Mail,
+  Phone,
+  Plus,
+  Trash2,
+  Info,
+  Send,
+  Loader2,
+} from "lucide-react";
 
 const steps = [
-  { title: "Create Campaign", description: "Set up your campaign details", slug: "create-campaign", icon: Megaphone },
-  { title: "Source Leads", description: "Define where to find your leads", slug: "source-leads", icon: Users },
-  { title: "Select Leads", description: "Choose your target audience", slug: "select-leads", icon: Target },
-  { title: "Outreach - Email", description: "Configure email outreach", slug: "outreach-email", icon: Mail },
-  { title: "Outreach - Call", description: "Set up call strategy", slug: "outreach-call", icon: Phone },
+  {
+    title: "Create Campaign",
+    description: "Set up your campaign details",
+    slug: "create-campaign",
+    icon: Megaphone,
+  },
+  {
+    title: "Source Leads",
+    description: "Upload your leads details",
+    slug: "source-leads",
+    icon: Users,
+  },
+  {
+    title: "Select Leads",
+    description: "Choose your target audience",
+    slug: "select-leads",
+    icon: Target,
+  },
+  {
+    title: "Outreach - Email",
+    description: "Configure email outreach",
+    slug: "outreach-email",
+    icon: Mail,
+  },
+  {
+    title: "Outreach - Call",
+    description: "Set up call strategy",
+    slug: "outreach-call",
+    icon: Phone,
+  },
 ];
 
 interface OnboardClientProps {
@@ -58,6 +97,8 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   const [emailBody, setEmailBody] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [activeCallLead, setActiveCallLead] = useState<number | null>(null);
+  const [callModalOpen, setCallModalOpen] = useState(false);
   const [suggestedLeads] = useState([
     {
       id: 1,
@@ -67,7 +108,8 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       linkedin: "linkedin.com/in/sarahchen",
       phone: "+1 (555) 123-4567",
       fScore: 92,
-      reason: "High engagement rate, matches target industry, decision maker role",
+      reason:
+        "High engagement rate, matches target industry, decision maker role",
     },
     {
       id: 2,
@@ -87,7 +129,8 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       linkedin: "linkedin.com/in/emilywatson",
       phone: "+1 (555) 345-6789",
       fScore: 95,
-      reason: "Perfect fit for target persona, recent company growth, high authority",
+      reason:
+        "Perfect fit for target persona, recent company growth, high authority",
     },
     {
       id: 4,
@@ -97,7 +140,8 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       linkedin: "linkedin.com/in/davidkim",
       phone: "+1 (555) 456-7890",
       fScore: 85,
-      reason: "Active buyer signals, matches geographic criteria, budget authority",
+      reason:
+        "Active buyer signals, matches geographic criteria, budget authority",
     },
     {
       id: 5,
@@ -107,7 +151,8 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       linkedin: "linkedin.com/in/jessicamartinez",
       phone: "+1 (555) 567-8901",
       fScore: 90,
-      reason: "Strong engagement history, ideal company size, relevant pain points",
+      reason:
+        "Strong engagement history, ideal company size, relevant pain points",
     },
   ]);
 
@@ -158,14 +203,16 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   const updateManualLead = (id: number, field: string, value: string) => {
     setManualLeads(
       manualLeads.map((lead) =>
-        lead.id === id ? { ...lead, [field]: value } : lead
-      )
+        lead.id === id ? { ...lead, [field]: value } : lead,
+      ),
     );
   };
 
   const toggleLeadSelection = (id: number) => {
     setSelectedLeads((prev) =>
-      prev.includes(id) ? prev.filter((leadId) => leadId !== id) : [...prev, id]
+      prev.includes(id)
+        ? prev.filter((leadId) => leadId !== id)
+        : [...prev, id],
     );
   };
 
@@ -181,7 +228,13 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       setEmailBody(body);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStep, campaignName, productUrl, productAboutUrl, productPricingUrl]);
+  }, [
+    activeStep,
+    campaignName,
+    productUrl,
+    productAboutUrl,
+    productPricingUrl,
+  ]);
 
   // Generate email body based on campaign data
   const generateEmailBody = () => {
@@ -212,19 +265,54 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     body += `I believe this could be valuable for you and would love to discuss how it can help.\n\n`;
     body += `Would you be open to a quick chat?\n\n`;
     body += `Best regards,\n`;
-    body += `${user.firstName || 'Your'} ${user.lastName || 'Name'}`;
+    body += `${user.firstName || "Your"} ${user.lastName || "Name"}`;
 
     return body;
+  };
+
+  // Get subtitle text based on active step
+  const getStepSubtitle = () => {
+    const subtitles = {
+      1: "Let's get you set up with your first campaign",
+      2: "Now let's source and add your leads",
+      3: "Select the best leads for your campaign",
+      4: "Configure your email outreach strategy",
+      5: "Set up your call strategy and launch",
+    };
+    return subtitles[activeStep as keyof typeof subtitles] || subtitles[1];
+  };
+
+  // Handle starting a call
+  const handleStartCall = (leadId: number) => {
+    setActiveCallLead(leadId);
+    setCallModalOpen(true);
+  };
+
+  // Handle ending a call
+  const handleEndCall = () => {
+    setActiveCallLead(null);
+    setCallModalOpen(false);
+  };
+
+  // Handle deal closed
+  const handleDealClosed = () => {
+    // Navigate to dashboard
+    router.push('/dashboard');
+  };
+
+  // Get selected lead details
+  const getSelectedLeadsWithDetails = () => {
+    return suggestedLeads.filter(lead => selectedLeads.includes(lead.id));
   };
 
   // Send email notification
   const handleSendEmail = async () => {
     setIsSendingEmail(true);
     try {
-      const response = await fetch('/api/send-email', {
-        method: 'POST',
+      const response = await fetch("/api/send-email", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           campaignName,
@@ -238,26 +326,26 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       });
 
       const data = await response.json();
-      console.log('Email API response:', data);
+      console.log("Email API response:", data);
 
       if (response.ok && data.success) {
         setEmailSent(true);
-        alert(`✅ Email sent successfully to ${data.recipients.join(', ')}`);
+        alert(`✅ Email sent successfully to ${data.recipients.join(", ")}`);
       } else {
         // Show detailed error messages
-        let errorMsg = '❌ Failed to send email:\n\n';
+        let errorMsg = "❌ Failed to send email:\n\n";
 
         if (data.errors && Array.isArray(data.errors)) {
-          errorMsg += data.errors.join('\n');
+          errorMsg += data.errors.join("\n");
         } else if (data.error) {
           errorMsg += data.error;
           if (data.details) {
-            errorMsg += '\n\nDetails: ' + data.details;
+            errorMsg += "\n\nDetails: " + data.details;
           }
         } else if (data.message) {
           errorMsg += data.message;
         } else {
-          errorMsg += 'Unknown error occurred';
+          errorMsg += "Unknown error occurred";
         }
 
         if (data.successes && data.successes > 0) {
@@ -265,11 +353,11 @@ export default function OnboardClient({ user }: OnboardClientProps) {
         }
 
         alert(errorMsg);
-        console.error('Email send failed:', data);
+        console.error("Email send failed:", data);
       }
     } catch (error) {
-      console.error('Error sending email:', error);
-      alert('❌ Failed to send email. Please check the console for details.');
+      console.error("Error sending email:", error);
+      alert("❌ Failed to send email. Please check the console for details.");
     } finally {
       setIsSendingEmail(false);
     }
@@ -303,7 +391,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
             Welcome to CloseLoop AI
           </h1>
           <p className="text-gray-400">
-            Let's get you set up with your first campaign
+            {getStepSubtitle()}
           </p>
         </div>
 
@@ -326,9 +414,9 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                   className="relative flex-1 items-start"
                 >
                   <StepperTrigger className="flex flex-col items-start justify-center gap-3.5 grow">
-                    <StepperIndicator className="bg-gray-800 rounded-full h-1 w-full data-[state=active]:bg-blue-500 data-[state=completed]:bg-blue-500"></StepperIndicator>
+                    <StepperIndicator className="bg-zinc-800 rounded-full h-1 w-full data-[state=active]:bg-orange-500 data-[state=completed]:bg-orange-500"></StepperIndicator>
                     <div className="flex items-start gap-2">
-                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-800 group-data-[state=active]/step:bg-blue-500 group-data-[state=completed]/step:bg-blue-500 transition-colors">
+                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-zinc-800 group-data-[state=active]/step:bg-orange-500 group-data-[state=completed]/step:bg-orange-500 transition-colors">
                         <Icon className="h-3.5 w-3.5 text-gray-400 group-data-[state=active]/step:text-white group-data-[state=completed]/step:text-white" />
                       </div>
                       <div className="flex flex-col items-start gap-1">
@@ -350,7 +438,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
           <StepperPanel>
             {/* Step 1: Create Campaign */}
             <StepperContent value={1}>
-              <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
                 <h2 className="text-xl font-semibold text-white mb-4">
                   Create Your Campaign
                 </h2>
@@ -364,7 +452,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                         type="text"
                         value={campaignName}
                         onChange={(e) => setCampaignName(e.target.value)}
-                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                         placeholder="Enter campaign name"
                       />
                     </div>
@@ -375,12 +463,13 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       <select
                         value={campaignType}
                         onChange={(e) => setCampaignType(e.target.value)}
-                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                       >
                         <option>Lead Generation</option>
                         <option>Customer Engagement</option>
                         <option>Product Launch</option>
                         <option>Follow-up Campaign</option>
+                        <option>Revenue Growth</option>
                       </select>
                     </div>
                   </div>
@@ -392,7 +481,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       rows={4}
                       value={campaignDescription}
                       onChange={(e) => setCampaignDescription(e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                       placeholder="Describe your campaign goals"
                     />
                   </div>
@@ -404,7 +493,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       type="url"
                       value={productUrl}
                       onChange={(e) => setProductUrl(e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                       placeholder="https://example.com"
                     />
                   </div>
@@ -416,7 +505,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       type="url"
                       value={productAboutUrl}
                       onChange={(e) => setProductAboutUrl(e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                       placeholder="https://example.com/about"
                     />
                   </div>
@@ -428,7 +517,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       type="url"
                       value={productPricingUrl}
                       onChange={(e) => setProductPricingUrl(e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                       placeholder="https://example.com/pricing"
                     />
                   </div>
@@ -438,7 +527,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
             {/* Step 2: Source Leads */}
             <StepperContent value={2}>
-              <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
                 <h2 className="text-xl font-semibold text-white mb-4">
                   Source Your Leads
                 </h2>
@@ -450,7 +539,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                     <select
                       value={leadSource}
                       onChange={(e) => setLeadSource(e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                     >
                       <option>Upload CSV</option>
                       <option>Manual Entry</option>
@@ -458,7 +547,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                   </div>
 
                   {leadSource === "Upload CSV" ? (
-                    <div className="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center hover:border-gray-600 transition-colors cursor-pointer">
+                    <div className="border-2 border-dashed border-zinc-700 rounded-lg p-8 text-center hover:border-gray-600 transition-colors cursor-pointer">
                       <div className="text-gray-400">
                         <p className="text-sm">
                           Click to upload or drag and drop
@@ -471,7 +560,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       <div className="overflow-x-auto">
                         <table className="w-full">
                           <thead>
-                            <tr className="border-b border-gray-700">
+                            <tr className="border-b border-zinc-700">
                               <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
                                 Name
                               </th>
@@ -491,7 +580,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                             {manualLeads.map((lead) => (
                               <tr
                                 key={lead.id}
-                                className="border-b border-gray-800"
+                                className="border-b border-zinc-800"
                               >
                                 <td className="py-2 px-4">
                                   <input
@@ -501,10 +590,10 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                       updateManualLead(
                                         lead.id,
                                         "name",
-                                        e.target.value
+                                        e.target.value,
                                       )
                                     }
-                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                                     placeholder="John Doe"
                                   />
                                 </td>
@@ -516,10 +605,10 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                       updateManualLead(
                                         lead.id,
                                         "about",
-                                        e.target.value
+                                        e.target.value,
                                       )
                                     }
-                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                                     placeholder="Software Engineer"
                                   />
                                 </td>
@@ -531,10 +620,10 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                       updateManualLead(
                                         lead.id,
                                         "linkedin",
-                                        e.target.value
+                                        e.target.value,
                                       )
                                     }
-                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                                     placeholder="linkedin.com/in/..."
                                   />
                                 </td>
@@ -546,10 +635,10 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                       updateManualLead(
                                         lead.id,
                                         "twitter",
-                                        e.target.value
+                                        e.target.value,
                                       )
                                     }
-                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                                     placeholder="@username"
                                   />
                                 </td>
@@ -568,7 +657,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       </div>
                       <button
                         onClick={addManualLead}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                        className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
                       >
                         <Plus className="h-4 w-4" />
                         Add Row
@@ -584,7 +673,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       <input
                         type="checkbox"
                         id="enrichment"
-                        className="w-4 h-4 bg-gray-800 border-gray-700 rounded"
+                        className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded"
                       />
                       <label
                         htmlFor="enrichment"
@@ -601,24 +690,36 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
             {/* Step 3: Select Leads */}
             <StepperContent value={3}>
-              <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
                 <h2 className="text-xl font-semibold text-white mb-4">
                   Select Your Target Leads
                 </h2>
                 <div className="space-y-6">
                   {/* Metrics */}
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-gray-800 rounded-lg p-4">
-                      <p className="text-sm text-gray-400 mb-1">Total Leads Sourced</p>
-                      <p className="text-2xl font-bold text-white">{manualLeads.filter(l => l.name).length}</p>
+                    <div className="bg-zinc-800 rounded-lg p-4">
+                      <p className="text-sm text-gray-400 mb-1">
+                        Total Leads Sourced
+                      </p>
+                      <p className="text-2xl font-bold text-white">
+                        {manualLeads.filter((l) => l.name).length}
+                      </p>
                     </div>
-                    <div className="bg-gray-800 rounded-lg p-4">
-                      <p className="text-sm text-gray-400 mb-1">Total Matched Leads</p>
-                      <p className="text-2xl font-bold text-white">{suggestedLeads.length}</p>
+                    <div className="bg-zinc-800 rounded-lg p-4">
+                      <p className="text-sm text-gray-400 mb-1">
+                        Total Matched Leads
+                      </p>
+                      <p className="text-2xl font-bold text-white">
+                        {suggestedLeads.length}
+                      </p>
                     </div>
-                    <div className="bg-gray-800 rounded-lg p-4">
-                      <p className="text-sm text-gray-400 mb-1">Suggested Leads</p>
-                      <p className="text-2xl font-bold text-blue-500">{suggestedLeads.length}</p>
+                    <div className="bg-zinc-800 rounded-lg p-4">
+                      <p className="text-sm text-gray-400 mb-1">
+                        Suggested Leads
+                      </p>
+                      <p className="text-2xl font-bold text-orange-500">
+                        {suggestedLeads.length}
+                      </p>
                     </div>
                   </div>
 
@@ -626,19 +727,23 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-gray-700">
+                        <tr className="border-b border-zinc-700">
                           <th className="text-left py-3 px-4 w-12">
                             <input
                               type="checkbox"
-                              checked={selectedLeads.length === suggestedLeads.length}
+                              checked={
+                                selectedLeads.length === suggestedLeads.length
+                              }
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  setSelectedLeads(suggestedLeads.map((l) => l.id));
+                                  setSelectedLeads(
+                                    suggestedLeads.map((l) => l.id),
+                                  );
                                 } else {
                                   setSelectedLeads([]);
                                 }
                               }}
-                              className="w-4 h-4 bg-gray-800 border-gray-700 rounded cursor-pointer"
+                              className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded cursor-pointer"
                             />
                           </th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">
@@ -666,14 +771,14 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                         {suggestedLeads.map((lead) => (
                           <tr
                             key={lead.id}
-                            className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors"
+                            className="border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors"
                           >
                             <td className="py-3 px-4">
                               <input
                                 type="checkbox"
                                 checked={selectedLeads.includes(lead.id)}
                                 onChange={() => toggleLeadSelection(lead.id)}
-                                className="w-4 h-4 bg-gray-800 border-gray-700 rounded cursor-pointer"
+                                className="w-4 h-4 bg-zinc-800 border-zinc-700 rounded cursor-pointer"
                               />
                             </td>
                             <td className="py-3 px-4 text-sm text-white font-medium">
@@ -685,7 +790,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                             <td className="py-3 px-4 text-sm text-gray-300">
                               {lead.email}
                             </td>
-                            <td className="py-3 px-4 text-sm text-blue-400">
+                            <td className="py-3 px-4 text-sm text-orange-400">
                               <a
                                 href={`https://${lead.linkedin}`}
                                 target="_blank"
@@ -704,8 +809,8 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                   lead.fScore >= 90
                                     ? "bg-green-900/30 text-green-400"
                                     : lead.fScore >= 85
-                                    ? "bg-blue-900/30 text-blue-400"
-                                    : "bg-yellow-900/30 text-yellow-400"
+                                      ? "bg-orange-900/30 text-orange-400"
+                                      : "bg-yellow-900/30 text-yellow-400"
                                 }`}
                               >
                                 {lead.fScore}
@@ -714,7 +819,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                             <td className="py-3 px-4">
                               <div className="group relative">
                                 <Info className="h-4 w-4 text-gray-400 cursor-help" />
-                                <div className="absolute right-0 top-6 w-64 p-3 bg-gray-950 border border-gray-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                                <div className="absolute right-0 top-6 w-64 p-3 bg-zinc-950 border border-zinc-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
                                   <p className="text-xs text-gray-300">
                                     {lead.reason}
                                   </p>
@@ -729,9 +834,10 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
                   {/* Selected Count */}
                   {selectedLeads.length > 0 && (
-                    <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-3">
-                      <p className="text-sm text-blue-300">
-                        {selectedLeads.length} lead{selectedLeads.length !== 1 ? "s" : ""} selected
+                    <div className="bg-orange-900/20 border border-orange-800 rounded-lg p-3">
+                      <p className="text-sm text-orange-300">
+                        {selectedLeads.length} lead
+                        {selectedLeads.length !== 1 ? "s" : ""} selected
                       </p>
                     </div>
                   )}
@@ -741,7 +847,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
             {/* Step 4: Outreach - Email */}
             <StepperContent value={4}>
-              <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
                 <h2 className="text-xl font-semibold text-white mb-4">
                   Configure Email Outreach
                 </h2>
@@ -754,7 +860,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       type="text"
                       value={emailSubject}
                       onChange={(e) => setEmailSubject(e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                       placeholder="Enter email subject"
                     />
                   </div>
@@ -766,7 +872,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       rows={6}
                       value={emailBody}
                       onChange={(e) => setEmailBody(e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                       placeholder="Write your email message..."
                     />
                     <p className="text-xs text-gray-500 mt-1">
@@ -779,7 +885,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       <label className="block text-sm font-medium text-gray-300 mb-2">
                         Send Time
                       </label>
-                      <select className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <select className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500">
                         <option>Immediately</option>
                         <option>Schedule for later</option>
                         <option>Best time per recipient</option>
@@ -789,7 +895,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       <label className="block text-sm font-medium text-gray-300 mb-2">
                         Follow-up
                       </label>
-                      <select className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <select className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500">
                         <option>No follow-up</option>
                         <option>After 3 days</option>
                         <option>After 7 days</option>
@@ -799,17 +905,21 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                   </div>
 
                   {/* Send Email Notification Button */}
-                  <div className="mt-6 pt-6 border-t border-gray-700">
-                    <div className="bg-gray-800 rounded-lg p-4 mb-4">
+                  <div className="mt-6 pt-6 border-t border-zinc-700">
+                    <div className="bg-zinc-800 rounded-lg p-4 mb-4">
                       <h3 className="text-sm font-medium text-white mb-2">
                         📧 Campaign Notification
                       </h3>
                       <p className="text-xs text-gray-400 mb-3">
-                        Send campaign details with product information to your team via email
+                        Send campaign details with product information to your
+                        team via email
                       </p>
                       <div className="flex items-center gap-2 text-xs text-gray-500">
                         <Mail className="h-3.5 w-3.5" />
-                        <span>Recipients: shreyansh.saurabh0107@gmail.com, binaryshrey@gmail.com</span>
+                        <span>
+                          Recipients: shreyansh.saurabh0107@gmail.com,
+                          binaryshrey@gmail.com
+                        </span>
                       </div>
                     </div>
                     <button
@@ -817,12 +927,12 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                       disabled={isSendingEmail || emailSent || !campaignName}
                       className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
                         emailSent
-                          ? 'bg-green-600 text-white cursor-not-allowed'
+                          ? "bg-green-600 text-white cursor-not-allowed"
                           : isSendingEmail
-                          ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                          : campaignName
-                          ? 'bg-blue-600 text-white hover:bg-blue-700'
-                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                            ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+                            : campaignName
+                              ? "bg-orange-600 text-white hover:bg-orange-700"
+                              : "bg-gray-700 text-gray-500 cursor-not-allowed"
                       }`}
                     >
                       {isSendingEmail ? (
@@ -852,81 +962,237 @@ export default function OnboardClient({ user }: OnboardClientProps) {
               </div>
             </StepperContent>
 
-            {/* Step 5: Outreach - Call */}
+            {/* Step 5: Call Center */}
             <StepperContent value={5}>
-              <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
-                <h2 className="text-xl font-semibold text-white mb-4">
-                  Set Up Call Strategy
-                </h2>
-                <div className="space-y-4">
+              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
+                <div className="flex items-center justify-between mb-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Call Script
-                    </label>
-                    <textarea
-                      rows={6}
-                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter your call script or talking points..."
-                    />
+                    <h2 className="text-xl font-semibold text-white mb-1">
+                      Call Center
+                    </h2>
+                    <p className="text-sm text-gray-400">
+                      {getSelectedLeadsWithDetails().length} lead{getSelectedLeadsWithDetails().length !== 1 ? "s" : ""} ready to call
+                    </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Call Window
-                      </label>
-                      <select className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option>9 AM - 12 PM</option>
-                        <option>12 PM - 3 PM</option>
-                        <option>3 PM - 6 PM</option>
-                        <option>Custom time</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Max Attempts
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="5"
-                        defaultValue="3"
-                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 bg-gray-800 border-gray-700 rounded"
-                      />
-                      <span className="text-sm text-gray-300">
-                        Leave voicemail if no answer
-                      </span>
-                    </label>
-                  </div>
-                  <div className="bg-gray-800 rounded-lg p-4 mt-6">
-                    <h3 className="text-sm font-medium text-white mb-2">
-                      Campaign Summary
-                    </h3>
-                    <div className="space-y-2 text-sm text-gray-400">
-                      <p>• Email outreach configured</p>
-                      <p>• Call strategy set up</p>
-                      <p>• Ready to launch campaign</p>
-                    </div>
+                  <div className="bg-zinc-800 rounded-lg px-4 py-2">
+                    <p className="text-xs text-gray-400">Campaign</p>
+                    <p className="text-sm font-semibold text-white">{campaignName || "Untitled Campaign"}</p>
                   </div>
                 </div>
+
+                {getSelectedLeadsWithDetails().length === 0 ? (
+                  <div className="bg-zinc-800/50 rounded-lg p-12 text-center">
+                    <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-white mb-2">No Leads Selected</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Please go back to Step 3 and select leads to call
+                    </p>
+                    <button
+                      onClick={() => setActiveStep(3)}
+                      className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                    >
+                      Go to Select Leads
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {getSelectedLeadsWithDetails().map((lead) => (
+                      <div
+                        key={lead.id}
+                        className="bg-zinc-800 rounded-lg p-4 flex items-center justify-between hover:bg-zinc-800/80 transition-colors"
+                      >
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white font-semibold text-lg">
+                            {lead.name.charAt(0)}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-white font-semibold">{lead.name}</h3>
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  lead.fScore >= 90
+                                    ? "bg-green-900/30 text-green-400"
+                                    : lead.fScore >= 85
+                                      ? "bg-orange-900/30 text-orange-400"
+                                      : "bg-yellow-900/30 text-yellow-400"
+                                }`}
+                              >
+                                F-Score: {lead.fScore}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-400">{lead.about}</p>
+                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                {lead.phone}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Mail className="h-3 w-3" />
+                                {lead.email}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleStartCall(lead.id)}
+                          className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                        >
+                          <Phone className="h-4 w-4" />
+                          Call Now
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* Call Modal */}
+              {callModalOpen && activeCallLead && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-zinc-900 rounded-xl border border-zinc-800 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+                    {(() => {
+                      const currentLead = suggestedLeads.find(l => l.id === activeCallLead);
+                      if (!currentLead) return null;
+
+                      return (
+                        <>
+                          {/* Modal Header */}
+                          <div className="bg-zinc-800 p-6 border-b border-zinc-700">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white font-semibold text-2xl">
+                                  {currentLead.name.charAt(0)}
+                                </div>
+                                <div>
+                                  <h2 className="text-2xl font-bold text-white mb-1">{currentLead.name}</h2>
+                                  <p className="text-gray-400 text-sm">{currentLead.about}</p>
+                                  <p className="text-gray-500 text-xs mt-1 flex items-center gap-2">
+                                    <Phone className="h-3 w-3" />
+                                    {currentLead.phone}
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={handleEndCall}
+                                className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                              >
+                                End Call
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Modal Content */}
+                          <div className="p-6">
+                            <div className="grid grid-cols-3 gap-6 mb-6">
+                              {/* Live Waveform */}
+                              <div className="col-span-2 bg-zinc-800 rounded-lg p-6 border border-zinc-700">
+                                <h3 className="text-sm font-medium text-gray-300 mb-4">Live Audio Activity</h3>
+                                <div className="h-32 flex items-center justify-center gap-1">
+                                  {[...Array(50)].map((_, i) => (
+                                    <div
+                                      key={i}
+                                      className="w-1 bg-orange-500 rounded-full animate-pulse"
+                                      style={{
+                                        height: `${Math.random() * 100 + 20}%`,
+                                        animationDelay: `${i * 0.05}s`,
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                                <div className="flex items-center justify-between mt-4 text-xs text-gray-500">
+                                  <span>00:00</span>
+                                  <span className="text-orange-400 font-medium">● Recording</span>
+                                  <span>02:34</span>
+                                </div>
+                              </div>
+
+                              {/* Confidence Score Pie Chart */}
+                              <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
+                                <h3 className="text-sm font-medium text-gray-300 mb-4">Confidence Score</h3>
+                                <div className="relative w-40 h-40 mx-auto">
+                                  <svg className="w-full h-full transform -rotate-90">
+                                    <circle
+                                      cx="80"
+                                      cy="80"
+                                      r="70"
+                                      fill="none"
+                                      stroke="#27272a"
+                                      strokeWidth="12"
+                                    />
+                                    <circle
+                                      cx="80"
+                                      cy="80"
+                                      r="70"
+                                      fill="none"
+                                      stroke="#f97316"
+                                      strokeWidth="12"
+                                      strokeDasharray={`${(currentLead.fScore / 100) * 440} 440`}
+                                      strokeLinecap="round"
+                                      className="transition-all duration-1000"
+                                    />
+                                  </svg>
+                                  <div className="absolute inset-0 flex items-center justify-center flex-col">
+                                    <span className="text-4xl font-bold text-white">{currentLead.fScore}%</span>
+                                    <span className="text-xs text-gray-400">Confidence</span>
+                                  </div>
+                                </div>
+                                {currentLead.fScore >= 80 && (
+                                  <button
+                                    onClick={handleDealClosed}
+                                    className="w-full mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
+                                  >
+                                    ✓ Mark Deal Closed
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Live Transcript */}
+                            <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
+                              <h3 className="text-sm font-medium text-gray-300 mb-4">Live Transcript</h3>
+                              <div className="space-y-3 max-h-64 overflow-y-auto">
+                                <div className="flex flex-col gap-1 items-start">
+                                  <span className="text-xs text-gray-500">AI Agent</span>
+                                  <div className="px-4 py-2 rounded-lg max-w-[80%] bg-orange-900/30 text-orange-100">
+                                    <p className="text-sm">Hello! I'm calling from {campaignName || "our company"}. How are you today?</p>
+                                  </div>
+                                  <span className="text-xs text-gray-600">Just now</span>
+                                </div>
+                                <div className="flex flex-col gap-1 items-end">
+                                  <span className="text-xs text-gray-500">Prospect</span>
+                                  <div className="px-4 py-2 rounded-lg max-w-[80%] bg-zinc-700 text-gray-100">
+                                    <p className="text-sm">Hi, I'm doing well. What can I do for you?</p>
+                                  </div>
+                                  <span className="text-xs text-gray-600">Just now</span>
+                                </div>
+                                <div className="flex flex-col gap-1 items-start">
+                                  <span className="text-xs text-gray-500">AI Agent</span>
+                                  <div className="px-4 py-2 rounded-lg max-w-[80%] bg-orange-900/30 text-orange-100">
+                                    <p className="text-sm">I wanted to share information about our solution that can help increase your conversion rates. Would you be interested in learning more?</p>
+                                  </div>
+                                  <span className="text-xs text-gray-600">Just now</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
             </StepperContent>
           </StepperPanel>
         </Stepper>
 
         {/* Navigation Buttons */}
-        <div className={`flex ${activeStep === 1 ? 'justify-end' : 'justify-between'} mt-8 gap-4`}>
+        <div
+          className={`flex ${activeStep === 1 ? "justify-end" : "justify-between"} mt-8 gap-4`}
+        >
           {activeStep > 1 && (
             <button
               onClick={handlePrevious}
-              className="flex-1 flex items-center justify-center gap-2 px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 px-6 py-2 bg-zinc-800 text-white rounded-lg hover:bg-gray-700 transition-colors"
             >
               <ChevronLeft className="h-4 w-4" />
               Previous
@@ -935,8 +1201,8 @@ export default function OnboardClient({ user }: OnboardClientProps) {
           <button
             onClick={handleNext}
             disabled={activeStep === steps.length}
-            className={`flex items-center justify-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-              activeStep === 1 ? 'w-full' : 'flex-1'
+            className={`flex items-center justify-center gap-2 px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              activeStep === 1 ? "w-full" : "flex-1"
             }`}
           >
             {activeStep === steps.length ? "Finish" : "Next"}

@@ -53,12 +53,12 @@ export default function EmailTestPage() {
 
         <div className="space-y-6">
           {/* Environment Check */}
-          <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
             <h2 className="text-xl font-semibold mb-4">Environment Check</h2>
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">RESEND_API_KEY:</span>
-                <code className="bg-gray-800 px-2 py-1 rounded text-green-400">
+                <code className="bg-zinc-800 px-2 py-1 rounded text-green-400">
                   {process.env.NEXT_PUBLIC_RESEND_API_KEY ? '✅ Set' : '❌ Not Set (This is normal - server-side only)'}
                 </code>
               </div>
@@ -69,13 +69,13 @@ export default function EmailTestPage() {
           </div>
 
           {/* Test Buttons */}
-          <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
             <h2 className="text-xl font-semibold mb-4">Run Tests</h2>
             <div className="space-y-3">
               <button
                 onClick={testEmail}
                 disabled={testing}
-                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 rounded-lg font-medium transition-colors"
+                className="w-full px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 rounded-lg font-medium transition-colors"
               >
                 {testing ? 'Testing...' : 'Test 1: Simple Email (Resend Test Inbox)'}
               </button>
@@ -106,7 +106,7 @@ export default function EmailTestPage() {
               <h2 className="text-xl font-semibold mb-4">
                 {result.success ? '✅ Test Passed' : '❌ Test Failed'}
               </h2>
-              <pre className="bg-gray-950 p-4 rounded overflow-x-auto text-xs">
+              <pre className="bg-zinc-950 p-4 rounded overflow-x-auto text-xs">
                 {JSON.stringify(result.data || result.error, null, 2)}
               </pre>
 
@@ -126,16 +126,16 @@ export default function EmailTestPage() {
           )}
 
           {/* Instructions */}
-          <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
             <h2 className="text-xl font-semibold mb-4">How to Fix Common Issues</h2>
             <div className="space-y-4 text-sm">
               <div>
                 <h3 className="font-semibold text-gray-300 mb-2">1. API Key Not Working:</h3>
                 <ul className="list-disc list-inside text-gray-400 space-y-1 ml-2">
-                  <li>Go to <a href="https://resend.com/api-keys" target="_blank" className="text-blue-400 hover:underline">Resend API Keys</a></li>
+                  <li>Go to <a href="https://resend.com/api-keys" target="_blank" className="text-orange-400 hover:underline">Resend API Keys</a></li>
                   <li>Copy your API key</li>
-                  <li>Update .env: <code className="bg-gray-800 px-2 py-0.5 rounded">RESEND_API_KEY=re_your_key</code></li>
-                  <li>Restart dev server: <code className="bg-gray-800 px-2 py-0.5 rounded">npm run dev</code></li>
+                  <li>Update .env: <code className="bg-zinc-800 px-2 py-0.5 rounded">RESEND_API_KEY=re_your_key</code></li>
+                  <li>Restart dev server: <code className="bg-zinc-800 px-2 py-0.5 rounded">npm run dev</code></li>
                 </ul>
               </div>
 
@@ -144,15 +144,15 @@ export default function EmailTestPage() {
                 <ul className="list-disc list-inside text-gray-400 space-y-1 ml-2">
                   <li>Check spam/junk folders</li>
                   <li>Verify email addresses in config/email.config.ts</li>
-                  <li>Check <a href="https://resend.com/emails" target="_blank" className="text-blue-400 hover:underline">Resend Dashboard</a> for delivery status</li>
+                  <li>Check <a href="https://resend.com/emails" target="_blank" className="text-orange-400 hover:underline">Resend Dashboard</a> for delivery status</li>
                 </ul>
               </div>
 
               <div>
                 <h3 className="font-semibold text-gray-300 mb-2">3. Sender Email Issues:</h3>
                 <ul className="list-disc list-inside text-gray-400 space-y-1 ml-2">
-                  <li>Default: <code className="bg-gray-800 px-2 py-0.5 rounded">onboarding@resend.dev</code> (works for testing)</li>
-                  <li>For production: Verify your domain in <a href="https://resend.com/domains" target="_blank" className="text-blue-400 hover:underline">Resend Domains</a></li>
+                  <li>Default: <code className="bg-zinc-800 px-2 py-0.5 rounded">onboarding@resend.dev</code> (works for testing)</li>
+                  <li>For production: Verify your domain in <a href="https://resend.com/domains" target="_blank" className="text-orange-400 hover:underline">Resend Domains</a></li>
                   <li>Update sender in config/email.config.ts after verification</li>
                 </ul>
               </div>
@@ -160,7 +160,7 @@ export default function EmailTestPage() {
           </div>
 
           {/* Configuration Info */}
-          <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+          <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
             <h2 className="text-xl font-semibold mb-4">Current Configuration</h2>
             <div className="space-y-2 text-sm font-mono">
               <div className="grid grid-cols-[140px_1fr] gap-2">
@@ -169,7 +169,7 @@ export default function EmailTestPage() {
               </div>
               <div className="grid grid-cols-[140px_1fr] gap-2">
                 <span className="text-gray-400">Recipients:</span>
-                <div className="text-blue-400">
+                <div className="text-orange-400">
                   <div>shreyansh.saurabh0107@gmail.com</div>
                   <div>binaryshrey@gmail.com</div>
                 </div>
@@ -184,7 +184,7 @@ export default function EmailTestPage() {
               <p className="text-xs text-yellow-300 font-semibold mb-1">⚠️ Resend Free Tier Note:</p>
               <p className="text-xs text-yellow-200">
                 You must verify recipient emails in Resend Dashboard before sending, OR upgrade to a paid plan.
-                See <code className="bg-gray-800 px-1 py-0.5 rounded">QUICK_FIX.md</code> for solutions.
+                See <code className="bg-zinc-800 px-1 py-0.5 rounded">QUICK_FIX.md</code> for solutions.
               </p>
             </div>
           </div>
