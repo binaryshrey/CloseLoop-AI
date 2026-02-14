@@ -25,16 +25,19 @@ export async function POST(request: NextRequest) {
 
     const client = twilio(accountSid, authToken);
 
+    // Strip trailing slash from base URL to avoid double-slash in paths
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '');
+
     // Initiate the call
     const call = await client.calls.create({
-      url: `${process.env.NEXT_PUBLIC_APP_URL}/api/twilio/voice`,
+      url: `${baseUrl}/api/twilio/voice`,
       to: phoneNumber,
       from: twilioPhoneNumber,
-      statusCallback: `${process.env.NEXT_PUBLIC_APP_URL}/api/twilio/status`,
+      statusCallback: `${baseUrl}/api/twilio/status`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
       statusCallbackMethod: 'POST',
       record: true,
-      recordingStatusCallback: `${process.env.NEXT_PUBLIC_APP_URL}/api/twilio/recording`,
+      recordingStatusCallback: `${baseUrl}/api/twilio/recording`,
       recordingStatusCallbackMethod: 'POST',
     });
 

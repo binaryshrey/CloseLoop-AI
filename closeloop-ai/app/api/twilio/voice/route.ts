@@ -14,25 +14,22 @@ export async function POST(request: NextRequest) {
     const direction = formData.get('Direction') as string;
 
     console.log('\n========================================');
-    console.log('🔔 TWILIO VOICE WEBHOOK CALLED');
+    console.log('TWILIO VOICE WEBHOOK CALLED');
     console.log('========================================');
-    console.log('⏰ Timestamp:', new Date().toISOString());
-    console.log('📞 Call SID:', callSid);
-    console.log('📱 From:', from);
-    console.log('📱 To:', to);
-    console.log('📊 Call Status:', callStatus);
-    console.log('🔄 Direction:', direction);
-    console.log('🌐 Request URL:', request.url);
-    console.log('🔑 ElevenLabs Agent ID:', process.env.ELEVENLABS_AGENT_ID?.substring(0, 10) + '...');
-    console.log('🔑 ElevenLabs API Key exists:', !!process.env.ELEVENLABS_API_KEY);
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('Call SID:', callSid);
+    console.log('From:', from);
+    console.log('To:', to);
+    console.log('Call Status:', callStatus);
+    console.log('Direction:', direction);
+    console.log('ElevenLabs Agent ID:', process.env.ELEVENLABS_AGENT_ID?.substring(0, 10) + '...');
     console.log('========================================\n');
 
-    const twiml = new VoiceResponse();
-
     // Validate required environment variables
-    if (!process.env.ELEVENLABS_AGENT_ID) {
-      console.error('ELEVENLABS_AGENT_ID is not set');
-      twiml.say({ voice: 'Polly.Joanna' }, 'Configuration error. Agent ID not found.');
+    if (!process.env.ELEVENLABS_AGENT_ID || !process.env.ELEVENLABS_API_KEY) {
+      console.error('Missing ElevenLabs credentials');
+      const twiml = new VoiceResponse();
+      twiml.say({ voice: 'Polly.Joanna' }, 'Configuration error. Missing credentials.');
       twiml.hangup();
       return new NextResponse(twiml.toString(), {
         headers: { 'Content-Type': 'text/xml' },
@@ -40,128 +37,68 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (!process.env.ELEVENLABS_API_KEY) {
-      console.error('ELEVENLABS_API_KEY is not set');
-      twiml.say({ voice: 'Polly.Joanna' }, 'Configuration error. API key not found.');
-      twiml.hangup();
-      return new NextResponse(twiml.toString(), {
-        headers: { 'Content-Type': 'text/xml' },
-        status: 200,
-      });
-    }
-
-    // Connect the call to ElevenLabs agent via WebSocket
+    // Use ElevenLabs Register Call API to get TwiML
+    // This handles protocol bridging between Twilio and ElevenLabs on their end
     try {
-      console.log('🔗 STEP 1: Requesting signed URL from ElevenLabs...');
-      const signedUrlStartTime = Date.now();
+      console.log('Registering call with ElevenLabs...');
+      const registerStartTime = Date.now();
 
-      // Get a signed URL from ElevenLabs for this conversation
-      const signedUrlResponse = await fetch(
-        `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${process.env.ELEVENLABS_AGENT_ID}`,
+      const registerResponse = await fetch(
+        'https://api.elevenlabs.io/v1/convai/twilio/register-call',
         {
-          method: 'GET',
+          method: 'POST',
           headers: {
-            'xi-api-key': process.env.ELEVENLABS_API_KEY || '',
+            'xi-api-key': process.env.ELEVENLABS_API_KEY,
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify({
+            agent_id: process.env.ELEVENLABS_AGENT_ID,
+            from_number: from || 'unknown',
+            to_number: to || process.env.TWILIO_PHONE_NUMBER || 'unknown',
+            direction: direction === 'outbound' ? 'outbound' : 'inbound',
+          }),
         }
       );
 
-      const signedUrlDuration = Date.now() - signedUrlStartTime;
-      console.log(`⏱️  Signed URL request took: ${signedUrlDuration}ms`);
-      console.log('📡 ElevenLabs API Response Status:', signedUrlResponse.status);
-      console.log('📋 Response Headers:', JSON.stringify(Object.fromEntries(signedUrlResponse.headers.entries())));
+      const registerDuration = Date.now() - registerStartTime;
+      console.log(`Register call request took: ${registerDuration}ms`);
+      console.log('ElevenLabs register-call status:', registerResponse.status);
 
-      if (!signedUrlResponse.ok) {
-        const errorText = await signedUrlResponse.text();
-        console.error('❌ FAILED to get signed URL from ElevenLabs:');
-        console.error('   Status:', signedUrlResponse.status);
-        console.error('   Status Text:', signedUrlResponse.statusText);
-        console.error('   Error Body:', errorText);
-        throw new Error(`ElevenLabs API error: ${signedUrlResponse.status} - ${errorText}`);
+      if (!registerResponse.ok) {
+        const errorText = await registerResponse.text();
+        console.error('Failed to register call with ElevenLabs:', registerResponse.status, errorText);
+        throw new Error(`ElevenLabs register-call error: ${registerResponse.status} - ${errorText}`);
       }
 
-      const responseData = await signedUrlResponse.json();
-      const { signed_url } = responseData;
+      // The register-call endpoint returns TwiML directly
+      const twimlResponse = await registerResponse.text();
 
-      console.log('📦 Full ElevenLabs Response:', JSON.stringify(responseData, null, 2));
+      const totalDuration = Date.now() - startTime;
+      console.log('\nVOICE WEBHOOK COMPLETED SUCCESSFULLY');
+      console.log(`Total processing time: ${totalDuration}ms`);
+      console.log('TwiML response:', twimlResponse);
+      console.log('========================================\n');
 
-      if (!signed_url) {
-        console.error('❌ No signed_url in response:', responseData);
-        throw new Error('No signed URL received from ElevenLabs');
-      }
-
-      console.log('✅ Got signed URL from ElevenLabs successfully');
-      console.log('🔗 WebSocket URL:', signed_url);
-      console.log('   Protocol:', signed_url.startsWith('wss://') ? 'WSS (Secure)' : 'WS (Unsecured)');
-      console.log('   Domain:', new URL(signed_url).hostname);
-
-      // Optional: Add a brief pause/greeting before connecting
-      // Uncomment if the connection is too abrupt
-      // twiml.pause({ length: 1 });
-
-      console.log('\n🔗 STEP 2: Creating Twilio Media Stream connection...');
-
-      // Set up Twilio Media Stream to connect to ElevenLabs WebSocket
-      const connect = twiml.connect();
-
-      // Create the stream with the signed URL and proper configuration
-      // Track 'both_tracks' ensures bidirectional audio (caller and agent)
-      connect.stream({
-        url: signed_url,
-        track: 'both_tracks', // Stream both inbound and outbound audio
+      return new NextResponse(twimlResponse, {
+        headers: { 'Content-Type': 'text/xml' },
       });
+    } catch (registerError: any) {
+      console.error('Error registering call with ElevenLabs:', registerError.message);
 
-      console.log('✅ TwiML stream object created successfully');
-      console.log('   Track mode: both_tracks (bidirectional audio)');
-      const twimlXml = twiml.toString();
-      console.log('📄 Generated TwiML:');
-      console.log('─────────────────────────────────────');
-      console.log(twimlXml);
-      console.log('─────────────────────────────────────');
-
-    } catch (streamError: any) {
-      console.error('\n❌❌❌ ERROR CREATING STREAM ❌❌❌');
-      console.error('Error Type:', streamError.constructor.name);
-      console.error('Error Message:', streamError.message);
-      console.error('Error Code:', streamError.code);
-      console.error('Full Error:', streamError);
-      console.error('Stack Trace:', streamError.stack);
-      console.error('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌\n');
-
-      // Create a fresh TwiML response with error message
-      const errorTwiml = new VoiceResponse();
-      errorTwiml.say(
+      const twiml = new VoiceResponse();
+      twiml.say(
         { voice: 'Polly.Joanna' },
         'We are experiencing technical difficulties connecting to the AI agent. Please try again later.'
       );
-      errorTwiml.hangup();
+      twiml.hangup();
 
-      return new NextResponse(errorTwiml.toString(), {
-        headers: {
-          'Content-Type': 'text/xml',
-        },
+      return new NextResponse(twiml.toString(), {
+        headers: { 'Content-Type': 'text/xml' },
         status: 200,
       });
     }
-
-    // Return the TwiML response
-    const twimlString = twiml.toString();
-    const totalDuration = Date.now() - startTime;
-
-    console.log('\n✅ VOICE WEBHOOK COMPLETED SUCCESSFULLY');
-    console.log(`⏱️  Total processing time: ${totalDuration}ms`);
-    console.log('📤 Returning TwiML to Twilio');
-    console.log('========================================\n');
-
-    return new NextResponse(twimlString, {
-      headers: {
-        'Content-Type': 'text/xml',
-      },
-    });
-
   } catch (error: any) {
-    console.error('❌ Fatal error in voice webhook:', error);
-    console.error('Error stack:', error.stack);
+    console.error('Fatal error in voice webhook:', error);
 
     const twiml = new VoiceResponse();
     twiml.say(
@@ -171,9 +108,7 @@ export async function POST(request: NextRequest) {
     twiml.hangup();
 
     return new NextResponse(twiml.toString(), {
-      headers: {
-        'Content-Type': 'text/xml',
-      },
+      headers: { 'Content-Type': 'text/xml' },
       status: 200,
     });
   }
