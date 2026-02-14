@@ -13,7 +13,7 @@ export default async function LiveCallPage() {
   }
 
   // You can get phone number from query params or database
-  const phoneNumber = "+1234567890"; // Replace with actual phone number
+  const phoneNumber = "+18457570323"; // Replace with actual phone number
 
   return (
     <div className="relative z-10 min-h-screen bg-black">

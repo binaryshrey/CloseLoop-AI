@@ -10,33 +10,51 @@ export async function POST(request: NextRequest) {
     const from = formData.get('From') as string;
     const to = formData.get('To') as string;
 
-    console.log('Incoming call:', { callSid, from, to });
+    console.log('Call connected:', { callSid, from, to });
+    console.log('ElevenLabs Agent ID:', process.env.ELEVENLABS_AGENT_ID);
+    console.log('ElevenLabs API Key exists:', !!process.env.ELEVENLABS_API_KEY);
 
     const twiml = new VoiceResponse();
 
-    // Connect the call to ElevenLabs agent
-    const connect = twiml.connect();
+    // For now, let's test with a simple voice response to verify the call works
+    twiml.say({
+      voice: 'alice',
+    }, 'Hello! This is CloseLoop A I. Your phone call is working correctly. The trial account message is normal and cannot be removed without upgrading your Twilio account. This is a test to confirm the call stays connected.');
 
-    // Use WebSocket to connect to ElevenLabs
-    const stream = connect.stream({
-      url: `wss://${request.headers.get('host')}/api/websocket/elevenlabs`,
-    });
+    twiml.pause({ length: 2 });
 
-    // Pass call metadata as parameters
-    stream.parameter({
-      name: 'callSid',
-      value: callSid,
-    });
-    stream.parameter({
-      name: 'agentId',
-      value: process.env.ELEVENLABS_AGENT_ID || '',
-    });
+    twiml.say({
+      voice: 'alice',
+    }, 'Now I will try to connect you to the ElevenLabs AI agent.');
 
-    // Alternative: Use ElevenLabs' phone integration directly
-    // If you've configured phone integration in ElevenLabs dashboard
-    // Uncomment and configure with your ElevenLabs phone number if needed:
-    // const dial = twiml.dial();
-    // dial.number('+1234567890'); // Replace with ElevenLabs phone number
+    twiml.pause({ length: 1 });
+
+    // Connect the call to ElevenLabs agent via WebSocket
+    try {
+      const connect = twiml.connect();
+
+      const stream = connect.stream({
+        url: `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${process.env.ELEVENLABS_AGENT_ID}`,
+      });
+
+      // Pass ElevenLabs API key for authentication
+      stream.parameter({
+        name: 'xi-api-key',
+        value: process.env.ELEVENLABS_API_KEY || '',
+      });
+
+      // Pass call metadata
+      stream.parameter({
+        name: 'call_sid',
+        value: callSid,
+      });
+
+      console.log('TwiML with stream generated successfully');
+    } catch (streamError) {
+      console.error('Error creating stream:', streamError);
+      twiml.say('There was an error connecting to the AI agent. The call will now end.');
+      twiml.hangup();
+    }
 
     return new NextResponse(twiml.toString(), {
       headers: {

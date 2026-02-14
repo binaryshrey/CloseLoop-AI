@@ -65,17 +65,15 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
 
   // Initiate call
   const initiateCall = async () => {
-    if (!phoneNumber) {
-      alert('Please enter a phone number');
-      return;
-    }
+    const targetNumber = '+13472229576'; // Your phone number
 
     setIsInitiating(true);
     try {
-      const response = await fetch('/api/calls/initiate', {
+      // Use the Twilio make-call endpoint for REAL phone calls
+      const response = await fetch('/api/twilio/make-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber, campaignData }),
+        body: JSON.stringify({ to: targetNumber }),
       });
 
       const data = await response.json();
@@ -85,14 +83,23 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
         setIsCallActive(true);
         setCallDuration(0);
 
-        // Simulate transcript (in production, use WebSocket for real-time updates)
-        simulateTranscript();
+        // Show message about real call
+        const initialMessage: TranscriptEntry = {
+          id: `msg-initial`,
+          speaker: 'agent',
+          text: `Calling ${targetNumber} from ${data.from}... Phone should be ringing now!`,
+          timestamp: new Date(),
+        };
+        setTranscript([initialMessage]);
+
+        // Note: Real transcript would come from Twilio/ElevenLabs webhooks
+        // For now, just show call initiated message
       } else {
-        alert(`Failed to initiate call: ${data.error}`);
+        alert(`Failed to initiate call: ${data.error || data.message}`);
       }
     } catch (error) {
       console.error('Error initiating call:', error);
-      alert('Failed to initiate call');
+      alert('Failed to initiate call. Check console for details.');
     } finally {
       setIsInitiating(false);
     }
