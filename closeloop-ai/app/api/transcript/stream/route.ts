@@ -8,34 +8,41 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const callSid = searchParams.get('callSid');
 
+  console.log('\n========================================');
+  console.log('📡 SSE STREAM REQUEST');
+  console.log('========================================');
+  console.log('⏰ Timestamp:', new Date().toISOString());
+  console.log('📞 Call SID:', callSid);
+  console.log('========================================\n');
+
   if (!callSid) {
+    console.error('❌ Missing callSid parameter in SSE request');
     return new Response('Missing callSid parameter', { status: 400 });
   }
-
-  console.log(`SSE connection established for call: ${callSid}`);
 
   // Create a readable stream for SSE
   const stream = new ReadableStream({
     start(controller) {
+      console.log('🔌 Starting SSE stream for call:', callSid);
+
       // Add this controller to the shared connections map
       addSSEConnection(callSid, controller);
 
       // Send initial connection message
       const encoder = new TextEncoder();
-      controller.enqueue(
-        encoder.encode(`data: ${JSON.stringify({ type: 'connected', callSid })}\n\n`)
-      );
+      const connectionMsg = JSON.stringify({ type: 'connected', callSid });
+      controller.enqueue(encoder.encode(`data: ${connectionMsg}\n\n`));
 
-      console.log(`Client connected to SSE stream for call: ${callSid}`);
+      console.log('✅ SSE Client connected and registered for call:', callSid);
 
       // Set up cleanup on connection close
       request.signal.addEventListener('abort', () => {
-        console.log(`Client disconnected from SSE stream for call: ${callSid}`);
+        console.log('🔌 SSE Client disconnected from call:', callSid);
         removeSSEConnection(callSid, controller);
         try {
           controller.close();
         } catch (e) {
-          // Controller already closed
+          console.log('   (Controller already closed)');
         }
       });
     },

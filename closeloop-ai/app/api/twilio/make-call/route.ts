@@ -78,9 +78,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Using webhook URL:', webhookUrl);
-    console.log('Calling from:', twilioPhoneNumber);
-    console.log('Calling to:', to);
+    console.log('\n========================================');
+    console.log('📞 INITIATING OUTBOUND CALL');
+    console.log('========================================');
+    console.log('🌐 Webhook Base URL:', webhookUrl);
+    console.log('📱 From Number:', twilioPhoneNumber);
+    console.log('📱 To Number:', to);
+    console.log('🔗 Voice URL:', `${webhookUrl}/api/twilio/voice`);
+    console.log('🔗 Status Callback URL:', `${webhookUrl}/api/twilio/status`);
+    console.log('========================================\n');
+
+    const callStartTime = Date.now();
 
     // Make the outbound call
     const call = await client.calls.create({
@@ -91,7 +99,16 @@ export async function POST(request: NextRequest) {
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
     });
 
-    console.log('Call initiated successfully:', call.sid);
+    const callDuration = Date.now() - callStartTime;
+
+    console.log('\n✅ CALL INITIATED SUCCESSFULLY');
+    console.log('========================================');
+    console.log('📞 Call SID:', call.sid);
+    console.log('📊 Initial Status:', call.status);
+    console.log('⏱️  API Call Duration:', callDuration + 'ms');
+    console.log('📱 To:', call.to);
+    console.log('📱 From:', call.from);
+    console.log('========================================\n');
 
     return NextResponse.json({
       success: true,
