@@ -7,6 +7,8 @@ import { TextEffect } from "@/components/ui/text-effect";
 import { AnimatedGroup } from "@/components/ui/animated-group";
 import { HeroHeader } from "./header";
 import { Highlighter } from "@/components/ui/highlighter";
+import { LogoMarquee } from "./logo-marquee";
+import { DigitalWorkers } from "./digital-workers";
 
 const transitionVariants = {
   item: {
@@ -113,11 +115,11 @@ export default function HeroSection() {
                   preset="fade-in-blur"
                   speedSegment={0.3}
                   as="h1"
-                  className="mx-auto mt-8 max-w-4xl text-balance text-5xl max-md:font-semibold md:text-7xl lg:mt-16 xl:text-[5.25rem]"
+                  className="text-foreground mx-auto mt-8 max-w-6xl text-balance text-5xl font-bold tracking-tight max-md:font-semibold md:text-7xl lg:mt-16 xl:text-[5.25rem]"
                 >
                   Score Your Leads, Automate Your Outreach, Close Your Deals.
                 </TextEffect>
-                <p className="mx-auto mt-8 max-w-2xl text-balance text-lg">
+                <p className="text-muted-foreground mx-auto mt-8 max-w-6xl text-balance text-lg leading-8">
                   <Highlighter action="underline" color="#FF9800">
                     <TextEffect
                       per="word"
@@ -238,6 +240,11 @@ export default function HeroSection() {
             <div className="group-hover:blur-xs mx-auto mt-12 grid max-w-2xl grid-cols-4 gap-x-12 gap-y-8 transition-all duration-500 group-hover:opacity-50 sm:gap-x-16 sm:gap-y-14"></div>
           </div>
         </section>
+        <LogoMarquee
+          title="Built with forward-thinking teams"
+          description="Built with cutting-edge AI and cloud infrastructure"
+        />
+        <DigitalWorkers />
       </main>
     </>
   );
