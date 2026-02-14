@@ -3,6 +3,49 @@ import twilio from 'twilio';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
+/**
+ * Converts the ElevenLabs register-call response into valid TwiML for Twilio.
+ * Handles both formats:
+ *  - Raw TwiML XML (starts with '<' or '<?xml')
+ *  - JSON with a twiml_response field
+ */
+function extractTwiml(responseBody: string): string {
+  const trimmed = responseBody.trim();
+
+  // If it starts with '<', it's already raw TwiML XML
+  if (trimmed.startsWith('<')) {
+    console.log('Response format: raw TwiML XML');
+    return trimmed;
+  }
+
+  // Otherwise try to parse as JSON
+  try {
+    const json = JSON.parse(trimmed);
+
+    // Check known field names
+    if (json.twiml_response) {
+      console.log('Response format: JSON with twiml_response field');
+      return json.twiml_response;
+    }
+    if (json.twiml) {
+      console.log('Response format: JSON with twiml field');
+      return json.twiml;
+    }
+
+    // If JSON but no known TwiML field, log everything for debugging
+    console.error('JSON response has no twiml field. Keys:', Object.keys(json));
+    console.error('Full response:', trimmed);
+    throw new Error('ElevenLabs response missing TwiML field');
+  } catch (parseError: any) {
+    // Not XML, not valid JSON — something unexpected
+    if (parseError.message === 'ElevenLabs response missing TwiML field') {
+      throw parseError;
+    }
+    console.error('Response is neither XML nor valid JSON:', trimmed.substring(0, 200));
+    throw new Error(`Unexpected response format from ElevenLabs: ${trimmed.substring(0, 100)}`);
+  }
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
@@ -37,8 +80,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Use ElevenLabs Register Call API to get TwiML
-    // This handles protocol bridging between Twilio and ElevenLabs on their end
+    // Register call with ElevenLabs and get TwiML for Twilio
     try {
       console.log('Registering call with ElevenLabs...');
       const registerStartTime = Date.now();
@@ -63,6 +105,7 @@ export async function POST(request: NextRequest) {
       const registerDuration = Date.now() - registerStartTime;
       console.log(`Register call request took: ${registerDuration}ms`);
       console.log('ElevenLabs register-call status:', registerResponse.status);
+      console.log('ElevenLabs content-type:', registerResponse.headers.get('content-type'));
 
       if (!registerResponse.ok) {
         const errorText = await registerResponse.text();
@@ -70,13 +113,16 @@ export async function POST(request: NextRequest) {
         throw new Error(`ElevenLabs register-call error: ${registerResponse.status} - ${errorText}`);
       }
 
-      // The register-call endpoint returns raw TwiML XML
-      const twimlResponse = await registerResponse.text();
+      const responseBody = await registerResponse.text();
+      console.log('Raw ElevenLabs response:', responseBody);
+
+      // Convert response to TwiML (handles both XML and JSON formats)
+      const twimlResponse = extractTwiml(responseBody);
 
       const totalDuration = Date.now() - startTime;
       console.log('\nVOICE WEBHOOK COMPLETED SUCCESSFULLY');
       console.log(`Total processing time: ${totalDuration}ms`);
-      console.log('TwiML response:', twimlResponse);
+      console.log('TwiML sent to Twilio:', twimlResponse);
       console.log('========================================\n');
 
       return new NextResponse(twimlResponse, {
