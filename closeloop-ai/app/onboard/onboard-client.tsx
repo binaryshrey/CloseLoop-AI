@@ -110,14 +110,15 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   const [emailSent, setEmailSent] = useState(false);
   const [activeCallLead, setActiveCallLead] = useState<string | null>(null);
   const [callModalOpen, setCallModalOpen] = useState(false);
-  const [userPhoneNumber, setUserPhoneNumber] = useState("");
 
   // Live call state
   const [activeCallSid, setActiveCallSid] = useState<string | null>(null);
-  const [confidenceScore, setConfidenceScore] = useState(50);
+  const [confidenceScore, setConfidenceScore] = useState(0);
   const [callDuration, setCallDuration] = useState(0);
+  const [liveTranscript, setLiveTranscript] = useState<Array<{ id: string; speaker: string; text: string; timestamp: string }>>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const confidenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Initialize step and campaign from query params
   useEffect(() => {
@@ -622,30 +623,68 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     }
   };
 
-  // Start confidence animation when entering Step 5 (outreach-call)
-  useEffect(() => {
-    if (activeStep === 5) {
-      setConfidenceScore(50);
-      let current = 50;
-      const target = 93;
-      confidenceTimerRef.current = setInterval(() => {
-        if (current >= target) {
-          if (confidenceTimerRef.current) clearInterval(confidenceTimerRef.current);
-          return;
-        }
-        const remaining = target - current;
-        const step = Math.max(1, Math.floor(remaining / 10));
-        current = Math.min(current + step, target);
-        setConfidenceScore(current);
-      }, 500);
+  // Connect to SSE transcript stream for a call
+  const connectToTranscriptStream = (callSid: string) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
     }
-    return () => {
-      if (confidenceTimerRef.current) {
-        clearInterval(confidenceTimerRef.current);
-        confidenceTimerRef.current = null;
+
+    const es = new EventSource(`/api/transcript/stream?callSid=${callSid}`);
+    eventSourceRef.current = es;
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'transcript' && data.data) {
+          const entry = data.data;
+          setLiveTranscript((prev) => [...prev, entry]);
+
+          // Feed to Claude for analysis
+          analyzeWithClaude(entry.text, entry.speaker);
+        }
+
+        if (data.type === 'call_ended') {
+          console.log('Call ended via SSE');
+        }
+      } catch (err) {
+        console.error('Error parsing SSE data:', err);
       }
     };
-  }, [activeStep]);
+
+    es.onerror = () => {
+      console.error('SSE connection error');
+    };
+  };
+
+  // Analyze transcript with Claude for real-time confidence scoring
+  const analyzeWithClaude = async (transcript: string, speaker: string) => {
+    if (isAnalyzing) return;
+    setIsAnalyzing(true);
+
+    try {
+      const response = await fetch('/api/analyze/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript,
+          speaker,
+          conversationHistory: liveTranscript,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.analysis) {
+          setConfidenceScore(data.analysis.confidenceScore);
+        }
+      }
+    } catch (error) {
+      console.error('Error analyzing transcript:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   // Trigger lead analysis when entering Step 3
   useEffect(() => {
@@ -731,16 +770,18 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       return;
     }
 
-    // Validate user's phone number
-    if (!userPhoneNumber) {
-      toast.error("Your Phone Number Required", {
-        description: "Please enter your phone number above to receive the AI call",
+    // Validate lead has a phone number
+    if (!currentLead.phone) {
+      toast.error("No Phone Number", {
+        description: "This lead does not have a phone number on file",
       });
       return;
     }
 
     // Reset live call state
     setActiveCallSid(null);
+    setLiveTranscript([]);
+    setConfidenceScore(0);
 
     setActiveCallLead(leadId);
     setCallModalOpen(true);
@@ -772,7 +813,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: userPhoneNumber,
+            to: currentLead.phone,
             campaignData: {
               campaignName,
               campaignDescription,
@@ -788,8 +829,9 @@ export default function OnboardClient({ user }: OnboardClientProps) {
         if (callResponse.ok && callData.success) {
           setActiveCallSid(callData.callSid);
           startCallTimer();
+          connectToTranscriptStream(callData.callSid);
           toast.success("Call Connected", {
-            description: `Calling ${currentLead.name} at ${userPhoneNumber}`,
+            description: `Calling ${currentLead.name} at ${currentLead.phone}`,
           });
         } else {
           // Handle error
@@ -868,11 +910,15 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     }, 1000);
   };
 
-  // Stop call timer
+  // Stop call timer and SSE
   const cleanupCall = () => {
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
     }
   };
 
@@ -2012,22 +2058,6 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                     </div>
 
                     {/* User Phone Number Input */}
-                    <div className="bg-zinc-800 rounded-lg p-4 mb-6">
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Your Phone Number
-                      </label>
-                      <p className="text-xs text-gray-500 mb-3">
-                        Enter your phone number to receive the AI demo call. The AI agent will call you and demonstrate the sales pitch.
-                      </p>
-                      <input
-                        type="tel"
-                        value={userPhoneNumber}
-                        onChange={(e) => setUserPhoneNumber(e.target.value)}
-                        placeholder="+1 (555) 123-4567"
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      />
-                    </div>
-
                     {getSelectedLeadsWithDetails().length === 0 ? (
                       <div className="bg-zinc-800/50 rounded-lg p-12 text-center">
                         <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
@@ -2168,7 +2198,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                   <span className="text-orange-400 font-medium">
                                     ● Recording
                                   </span>
-                                  <span>Live</span>
+                                  <span>{liveTranscript.length} messages</span>
                                 </div>
                               </div>
 
@@ -2176,6 +2206,9 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                               <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
                                 <h3 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
                                   Confidence Score
+                                  {isAnalyzing && (
+                                    <Loader2 className="h-3 w-3 animate-spin text-orange-400" />
+                                  )}
                                 </h3>
                                 <div className="relative w-40 h-40 mx-auto">
                                   <svg className="w-full h-full transform -rotate-90">
@@ -2224,6 +2257,36 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                 )}
                               </div>
                             </div>
+
+                            {/* Live Transcript */}
+                            {liveTranscript.length > 0 && (
+                              <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
+                                <h3 className="text-sm font-medium text-gray-300 mb-4">
+                                  Live Transcript
+                                </h3>
+                                <div className="space-y-3 max-h-60 overflow-y-auto">
+                                  {liveTranscript.map((entry) => (
+                                    <div
+                                      key={entry.id}
+                                      className={`flex gap-3 ${entry.speaker === 'agent' ? 'justify-start' : 'justify-end'}`}
+                                    >
+                                      <div
+                                        className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
+                                          entry.speaker === 'agent'
+                                            ? 'bg-zinc-700 text-gray-200'
+                                            : 'bg-orange-600/20 text-orange-200'
+                                        }`}
+                                      >
+                                        <span className="text-xs font-medium text-gray-400 block mb-1">
+                                          {entry.speaker === 'agent' ? 'AI Agent' : 'Prospect'}
+                                        </span>
+                                        {entry.text}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </>
                       );
