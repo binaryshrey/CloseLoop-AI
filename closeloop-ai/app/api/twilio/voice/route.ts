@@ -98,6 +98,13 @@ export async function POST(request: NextRequest) {
             from_number: from || 'unknown',
             to_number: to || process.env.TWILIO_PHONE_NUMBER || 'unknown',
             direction: direction === 'outbound' ? 'outbound' : 'inbound',
+            conversation_initiation_client_data: {
+              conversation_config_override: {
+                tts: {
+                  output_format: 'ulaw_8000',
+                },
+              },
+            },
           }),
         }
       );
