@@ -112,6 +112,21 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [userPhoneNumber, setUserPhoneNumber] = useState("");
 
+  // Live call state
+  const [activeCallSid, setActiveCallSid] = useState<string | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState<
+    Array<{ id: string; speaker: "agent" | "prospect"; text: string; timestamp: string }>
+  >([]);
+  const [confidenceScore, setConfidenceScore] = useState(0);
+  const [sentiment, setSentiment] = useState<string>("NEUTRAL");
+  const [signals, setSignals] = useState<string[]>([]);
+  const [recommendation, setRecommendation] = useState("");
+  const [callDuration, setCallDuration] = useState(0);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
+
   // Initialize step and campaign from query params
   useEffect(() => {
     const stepParam = searchParams.get("step");
@@ -707,6 +722,14 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       return;
     }
 
+    // Reset live call state
+    setLiveTranscript([]);
+    setConfidenceScore(0);
+    setSentiment("NEUTRAL");
+    setSignals([]);
+    setRecommendation("");
+    setActiveCallSid(null);
+
     setActiveCallLead(leadId);
     setCallModalOpen(true);
 
@@ -751,8 +774,11 @@ export default function OnboardClient({ user }: OnboardClientProps) {
         console.log("Call API response:", callData);
 
         if (callResponse.ok && callData.success) {
+          setActiveCallSid(callData.callSid);
+          connectToTranscriptStream(callData.callSid);
+          startCallTimer();
           toast.success("Call Connected", {
-            description: `Calling ${currentLead.name} at ${currentLead.phone}`,
+            description: `Calling ${currentLead.name} at ${userPhoneNumber}`,
           });
         } else {
           // Handle error
@@ -800,8 +826,10 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       }
     }
 
+    cleanupCall();
     setActiveCallLead(null);
     setCallModalOpen(false);
+    setActiveCallSid(null);
   };
 
   // Handle deal closed
@@ -818,6 +846,125 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     setTimeout(() => {
       router.push("/dashboard");
     }, 1500);
+  };
+
+  // Connect to SSE stream for live transcripts
+  const connectToTranscriptStream = (callSid: string) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    const eventSource = new EventSource(
+      `/api/transcript/stream?callSid=${callSid}`,
+    );
+    eventSourceRef.current = eventSource;
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "transcript" && data.data) {
+          const entry = data.data;
+          setLiveTranscript((prev) => [...prev, entry]);
+
+          // Auto-scroll to bottom
+          setTimeout(() => {
+            transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          }, 100);
+
+          // Trigger Claude analysis after each new message
+          setLiveTranscript((prev) => {
+            analyzeWithClaude(prev);
+            return prev;
+          });
+        }
+
+        if (data.type === "call_ended") {
+          console.log("Call ended via SSE");
+        }
+      } catch (e) {
+        console.error("Error parsing SSE data:", e);
+      }
+    };
+
+    eventSource.onerror = () => {
+      console.error("SSE connection error");
+    };
+  };
+
+  // Analyze transcript with Claude API
+  const analyzeWithClaude = async (
+    transcript: Array<{
+      id: string;
+      speaker: "agent" | "prospect";
+      text: string;
+      timestamp: string;
+    }>,
+  ) => {
+    if (transcript.length === 0 || isAnalyzing) return;
+
+    setIsAnalyzing(true);
+    try {
+      const lastEntry = transcript[transcript.length - 1];
+      const response = await fetch("/api/analyze/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript: lastEntry.text,
+          speaker: lastEntry.speaker === "agent" ? "AI Agent" : "Prospect",
+          conversationHistory: transcript.map((t) => ({
+            speaker: t.speaker === "agent" ? "AI Agent" : "Prospect",
+            text: t.text,
+          })),
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success && data.analysis) {
+        setConfidenceScore(data.analysis.confidenceScore);
+        setSentiment(data.analysis.sentiment);
+        setSignals(data.analysis.signals || []);
+        setRecommendation(data.analysis.recommendation || "");
+      }
+    } catch (error) {
+      console.error("Error analyzing transcript:", error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Start call timer
+  const startCallTimer = () => {
+    setCallDuration(0);
+    callTimerRef.current = setInterval(() => {
+      setCallDuration((prev) => prev + 1);
+    }, 1000);
+  };
+
+  // Stop call timer and SSE
+  const cleanupCall = () => {
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => cleanupCall();
+  }, []);
+
+  // Format seconds as mm:ss
+  const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const s = (seconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
   };
 
   // Get selected lead details
@@ -2094,18 +2241,21 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                   ))}
                                 </div>
                                 <div className="flex items-center justify-between mt-4 text-xs text-gray-500">
-                                  <span>00:00</span>
+                                  <span>{formatDuration(callDuration)}</span>
                                   <span className="text-orange-400 font-medium">
                                     ● Recording
                                   </span>
-                                  <span>02:34</span>
+                                  <span>{liveTranscript.length} messages</span>
                                 </div>
                               </div>
 
                               {/* Confidence Score Pie Chart */}
                               <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
-                                <h3 className="text-sm font-medium text-gray-300 mb-4">
+                                <h3 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
                                   Confidence Score
+                                  {isAnalyzing && (
+                                    <Loader2 className="h-3 w-3 animate-spin text-orange-400" />
+                                  )}
                                 </h3>
                                 <div className="relative w-40 h-40 mx-auto">
                                   <svg className="w-full h-full transform -rotate-90">
@@ -2122,32 +2272,82 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                       cy="80"
                                       r="70"
                                       fill="none"
-                                      stroke="#f97316"
+                                      stroke={
+                                        confidenceScore >= 70
+                                          ? "#22c55e"
+                                          : confidenceScore >= 40
+                                            ? "#f97316"
+                                            : "#ef4444"
+                                      }
                                       strokeWidth="12"
-                                      strokeDasharray={`${(currentLead.fScore / 100) * 440} 440`}
+                                      strokeDasharray={`${(confidenceScore / 100) * 440} 440`}
                                       strokeLinecap="round"
                                       className="transition-all duration-1000"
                                     />
                                   </svg>
                                   <div className="absolute inset-0 flex items-center justify-center flex-col">
                                     <span className="text-4xl font-bold text-white">
-                                      {currentLead.fScore}%
+                                      {confidenceScore}%
                                     </span>
-                                    <span className="text-xs text-gray-400">
-                                      Confidence
+                                    <span
+                                      className={`text-xs font-medium ${
+                                        sentiment === "POSITIVE"
+                                          ? "text-green-400"
+                                          : sentiment === "NEGATIVE"
+                                            ? "text-red-400"
+                                            : "text-gray-400"
+                                      }`}
+                                    >
+                                      {sentiment}
                                     </span>
                                   </div>
                                 </div>
-                                {currentLead.fScore >= 80 && (
+                                {confidenceScore >= 80 && (
                                   <button
                                     onClick={handleDealClosed}
                                     className="w-full mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
                                   >
-                                    ✓ Mark Deal Closed
+                                    Mark Deal Closed
                                   </button>
                                 )}
                               </div>
                             </div>
+
+                            {/* AI Signals & Recommendation */}
+                            {(signals.length > 0 || recommendation) && (
+                              <div className="grid grid-cols-2 gap-4 mb-6">
+                                {signals.length > 0 && (
+                                  <div className="bg-zinc-800 rounded-lg p-4 border border-zinc-700">
+                                    <h4 className="text-xs font-medium text-gray-400 mb-2">
+                                      Key Signals
+                                    </h4>
+                                    <ul className="space-y-1">
+                                      {signals.map((signal, i) => (
+                                        <li
+                                          key={i}
+                                          className="text-xs text-gray-300 flex items-start gap-1.5"
+                                        >
+                                          <span className="text-orange-400 mt-0.5">
+                                            -
+                                          </span>
+                                          {signal}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                {recommendation && (
+                                  <div className="bg-zinc-800 rounded-lg p-4 border border-zinc-700">
+                                    <h4 className="text-xs font-medium text-gray-400 mb-2">
+                                      AI Recommendation
+                                    </h4>
+                                    <p className="text-xs text-gray-300">
+                                      {recommendation}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {/* Live Transcript */}
                             <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
@@ -2155,50 +2355,46 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                 Live Transcript
                               </h3>
                               <div className="space-y-3 max-h-64 overflow-y-auto">
-                                <div className="flex flex-col gap-1 items-start">
-                                  <span className="text-xs text-gray-500">
-                                    AI Agent
-                                  </span>
-                                  <div className="px-4 py-2 rounded-lg max-w-[80%] bg-orange-900/30 text-orange-100">
-                                    <p className="text-sm">
-                                      Hello! I'm calling from{" "}
-                                      {campaignName || "our company"}. How are
-                                      you today?
-                                    </p>
+                                {liveTranscript.length === 0 ? (
+                                  <div className="flex items-center justify-center py-8 text-gray-500">
+                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    <span className="text-sm">
+                                      Waiting for conversation to start...
+                                    </span>
                                   </div>
-                                  <span className="text-xs text-gray-600">
-                                    Just now
-                                  </span>
-                                </div>
-                                <div className="flex flex-col gap-1 items-end">
-                                  <span className="text-xs text-gray-500">
-                                    Prospect
-                                  </span>
-                                  <div className="px-4 py-2 rounded-lg max-w-[80%] bg-zinc-700 text-gray-100">
-                                    <p className="text-sm">
-                                      Hi, I'm doing well. What can I do for you?
-                                    </p>
-                                  </div>
-                                  <span className="text-xs text-gray-600">
-                                    Just now
-                                  </span>
-                                </div>
-                                <div className="flex flex-col gap-1 items-start">
-                                  <span className="text-xs text-gray-500">
-                                    AI Agent
-                                  </span>
-                                  <div className="px-4 py-2 rounded-lg max-w-[80%] bg-orange-900/30 text-orange-100">
-                                    <p className="text-sm">
-                                      I wanted to share information about our
-                                      solution that can help increase your
-                                      conversion rates. Would you be interested
-                                      in learning more?
-                                    </p>
-                                  </div>
-                                  <span className="text-xs text-gray-600">
-                                    Just now
-                                  </span>
-                                </div>
+                                ) : (
+                                  liveTranscript.map((entry) => (
+                                    <div
+                                      key={entry.id}
+                                      className={`flex flex-col gap-1 ${
+                                        entry.speaker === "agent"
+                                          ? "items-start"
+                                          : "items-end"
+                                      }`}
+                                    >
+                                      <span className="text-xs text-gray-500">
+                                        {entry.speaker === "agent"
+                                          ? "AI Agent"
+                                          : "Prospect"}
+                                      </span>
+                                      <div
+                                        className={`px-4 py-2 rounded-lg max-w-[80%] ${
+                                          entry.speaker === "agent"
+                                            ? "bg-orange-900/30 text-orange-100"
+                                            : "bg-zinc-700 text-gray-100"
+                                        }`}
+                                      >
+                                        <p className="text-sm">{entry.text}</p>
+                                      </div>
+                                      <span className="text-xs text-gray-600">
+                                        {new Date(
+                                          entry.timestamp,
+                                        ).toLocaleTimeString()}
+                                      </span>
+                                    </div>
+                                  ))
+                                )}
+                                <div ref={transcriptEndRef} />
                               </div>
                             </div>
                           </div>
