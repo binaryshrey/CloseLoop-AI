@@ -70,8 +70,14 @@ export async function POST(request: NextRequest) {
         throw new Error(`ElevenLabs register-call error: ${registerResponse.status} - ${errorText}`);
       }
 
-      // The register-call endpoint returns TwiML directly
-      const twimlResponse = await registerResponse.text();
+      // The register-call endpoint returns JSON with a twiml_response field
+      const data = await registerResponse.json();
+      const twimlResponse = data.twiml_response;
+
+      if (!twimlResponse) {
+        console.error('No twiml_response in ElevenLabs response:', JSON.stringify(data));
+        throw new Error('ElevenLabs register-call returned no twiml_response');
+      }
 
       const totalDuration = Date.now() - startTime;
       console.log('\nVOICE WEBHOOK COMPLETED SUCCESSFULLY');
