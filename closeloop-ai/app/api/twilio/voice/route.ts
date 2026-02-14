@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import twilio from 'twilio';
+import { registerCallMapping } from '@/lib/call-mapping';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
@@ -150,14 +151,9 @@ export async function POST(request: NextRequest) {
         callConversationMap.set(callSid, conversationId);
         console.log(`✅ Stored mapping: ${callSid} -> ${conversationId}`);
         
-        // Also register this mapping in the webhook module
-        try {
-          const { registerCallMapping } = await import('../elevenlabs/webhook/route');
-          registerCallMapping(callSid, conversationId);
-          console.log('✅ Registered bidirectional mapping for webhooks');
-        } catch (err) {
-          console.warn('⚠️  Could not register call mapping:', err);
-        }
+        // Also register this mapping for bidirectional resolution
+        registerCallMapping(callSid, conversationId);
+        console.log('✅ Registered bidirectional mapping for webhooks');
 
         // Clean up after 1 hour
         setTimeout(() => {

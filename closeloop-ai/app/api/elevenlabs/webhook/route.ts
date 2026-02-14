@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { registerCallMapping, resolveSessionId as resolveCallMapping } from '@/lib/call-mapping';
 
 // In-memory store for call transcripts (use Redis in production)
 const callTranscripts: Map<string, Array<{
@@ -11,29 +12,16 @@ const callTranscripts: Map<string, Array<{
 // SSE connections store - shared module state
 const sseConnections = new Map<string, Set<ReadableStreamDefaultController>>();
 
-// Bidirectional mapping between callSid and conversationId
-const conversationToCallMap = new Map<string, string>();
-const callToConversationMap = new Map<string, string>();
-
-export function registerCallMapping(callSid: string, conversationId: string) {
-  conversationToCallMap.set(conversationId, callSid);
-  callToConversationMap.set(callSid, conversationId);
-  console.log('📌 Registered mapping: callSid', callSid, '↔️ conversationId', conversationId);
-}
+// Export registerCallMapping for external use
+export { registerCallMapping };
 
 function resolveSessionId(call_sid?: string, conversation_id?: string): string {
   // If we have both, use call_sid as primary
   if (call_sid) return call_sid;
   
-  // If we only have conversation_id, try to find the mapped call_sid
+  // If we only have conversation_id, try to resolve it using shared utility
   if (conversation_id) {
-    const mappedCallSid = conversationToCallMap.get(conversation_id);
-    if (mappedCallSid) {
-      console.log('🔄 Resolved conversation_id', conversation_id, '→ callSid', mappedCallSid);
-      return mappedCallSid;
-    }
-    // If no mapping, use conversation_id
-    return conversation_id;
+    return resolveCallMapping(conversation_id);
   }
   
   return 'unknown';
