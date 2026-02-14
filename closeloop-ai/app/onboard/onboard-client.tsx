@@ -773,6 +773,18 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   const handleSendEmail = async () => {
     setIsSendingEmail(true);
     try {
+      // Get selected leads' email addresses
+      const selectedLeadsWithDetails = getSelectedLeadsWithDetails();
+      const recipientEmails = selectedLeadsWithDetails
+        .map((lead) => lead.email)
+        .filter((email) => email); // Filter out empty emails
+
+      if (recipientEmails.length === 0) {
+        alert("❌ No email addresses found for selected leads. Please ensure leads have valid email addresses.");
+        setIsSendingEmail(false);
+        return;
+      }
+
       const response = await fetch("/api/send-email", {
         method: "POST",
         headers: {
@@ -786,6 +798,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
           productPricingUrl,
           emailSubject,
           emailBody,
+          recipients: recipientEmails, // Pass selected leads' emails
         }),
       });
 

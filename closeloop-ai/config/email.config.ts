@@ -1,10 +1,8 @@
 // Email configuration for campaign notifications
 export const EMAIL_CONFIG = {
   // Default recipients for campaign notifications
-  defaultRecipients: [
-    "shreyansh.saurabh0107@gmail.com",
-    "binaryshrey@gmail.com",
-  ],
+  // Note: Recipients should be passed from selected leads
+  defaultRecipients: [] as string[],
 
   // SMTP Configuration
   smtp: {
