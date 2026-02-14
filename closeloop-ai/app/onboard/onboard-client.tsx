@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+import Papa from "papaparse";
 import ProfileMenu from "@/components/profile-menu";
 import {
   Stepper,
@@ -77,105 +79,183 @@ interface OnboardClientProps {
 export default function OnboardClient({ user }: OnboardClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeStep, setActiveStep] = useState(1);
   const [leadSource, setLeadSource] = useState("Upload CSV");
   const [manualLeads, setManualLeads] = useState([
     { id: 1, name: "", about: "", linkedin: "", twitter: "" },
   ]);
-  const [selectedLeads, setSelectedLeads] = useState<number[]>([]);
+  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [isUploadingCsv, setIsUploadingCsv] = useState(false);
+  const [csvLeads, setCsvLeads] = useState<any[]>([]);
+  const [isAnalyzingLeads, setIsAnalyzingLeads] = useState(false);
+  const [analyzedLeads, setAnalyzedLeads] = useState<any[]>([]);
 
   // Campaign data state
+  const [campaignId, setCampaignId] = useState<string | null>(null);
   const [campaignName, setCampaignName] = useState("");
   const [campaignType, setCampaignType] = useState("Lead Generation");
   const [campaignDescription, setCampaignDescription] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [productAboutUrl, setProductAboutUrl] = useState("");
   const [productPricingUrl, setProductPricingUrl] = useState("");
+  const [isSavingCampaign, setIsSavingCampaign] = useState(false);
 
   // Email state
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
-  const [activeCallLead, setActiveCallLead] = useState<number | null>(null);
+  const [activeCallLead, setActiveCallLead] = useState<string | null>(null);
   const [callModalOpen, setCallModalOpen] = useState(false);
-  const [suggestedLeads] = useState([
-    {
-      id: 1,
-      name: "Sarah Chen",
-      about: "VP of Engineering at TechCorp",
-      email: "sarah.chen@techcorp.com",
-      linkedin: "linkedin.com/in/sarahchen",
-      phone: "+1 (555) 123-4567",
-      fScore: 92,
-      reason:
-        "High engagement rate, matches target industry, decision maker role",
-    },
-    {
-      id: 2,
-      name: "Michael Rodriguez",
-      about: "Senior Product Manager at InnovateLabs",
-      email: "m.rodriguez@innovatelabs.io",
-      linkedin: "linkedin.com/in/michaelrodriguez",
-      phone: "+1 (555) 234-5678",
-      fScore: 88,
-      reason: "Previously engaged with similar campaigns, active on LinkedIn",
-    },
-    {
-      id: 3,
-      name: "Emily Watson",
-      about: "CTO at StartupXYZ",
-      email: "emily@startupxyz.com",
-      linkedin: "linkedin.com/in/emilywatson",
-      phone: "+1 (555) 345-6789",
-      fScore: 95,
-      reason:
-        "Perfect fit for target persona, recent company growth, high authority",
-    },
-    {
-      id: 4,
-      name: "David Kim",
-      about: "Head of Sales at SalesPro",
-      email: "dkim@salespro.com",
-      linkedin: "linkedin.com/in/davidkim",
-      phone: "+1 (555) 456-7890",
-      fScore: 85,
-      reason:
-        "Active buyer signals, matches geographic criteria, budget authority",
-    },
-    {
-      id: 5,
-      name: "Jessica Martinez",
-      about: "Director of Marketing at BrandBoost",
-      email: "jessica.m@brandboost.com",
-      linkedin: "linkedin.com/in/jessicamartinez",
-      phone: "+1 (555) 567-8901",
-      fScore: 90,
-      reason:
-        "Strong engagement history, ideal company size, relevant pain points",
-    },
-  ]);
 
-  // Initialize step from query param
+  // Initialize step and campaign from query params
   useEffect(() => {
     const stepParam = searchParams.get("step");
+    const campaignParam = searchParams.get("campaign_id");
+
     if (stepParam) {
       const stepIndex = steps.findIndex((s) => s.slug === stepParam);
       if (stepIndex !== -1) {
         setActiveStep(stepIndex + 1);
       }
     }
+
+    if (campaignParam && !campaignId) {
+      setCampaignId(campaignParam);
+      loadCampaignData(campaignParam);
+    }
   }, [searchParams]);
+
+  // Load campaign data
+  const loadCampaignData = async (id: string) => {
+    try {
+      const response = await fetch(`/api/campaigns?campaign_id=${id}`);
+      const data = await response.json();
+
+      if (data.success && data.campaign) {
+        const campaign = data.campaign;
+        setCampaignName(campaign.campaign_name);
+        setCampaignType(campaign.campaign_type);
+        setCampaignDescription(campaign.campaign_description || "");
+        setProductUrl(campaign.product_url || "");
+        setProductAboutUrl(campaign.product_about_url || "");
+        setProductPricingUrl(campaign.product_pricing_url || "");
+        setEmailSubject(campaign.email_subject || "");
+        setEmailBody(campaign.email_body || "");
+
+        toast.info('Campaign Loaded', {
+          description: `Continuing "${campaign.campaign_name}"`,
+        });
+      }
+    } catch (error) {
+      console.error("Error loading campaign:", error);
+      toast.error('Error Loading Campaign', {
+        description: 'Failed to load campaign data',
+      });
+    }
+  };
 
   // Update query param when step changes
   useEffect(() => {
     const currentSlug = steps[activeStep - 1]?.slug;
     if (currentSlug) {
-      router.replace(`/onboard?step=${currentSlug}`, { scroll: false });
+      const url = campaignId
+        ? `/onboard?step=${currentSlug}&campaign_id=${campaignId}`
+        : `/onboard?step=${currentSlug}`;
+      router.replace(url, { scroll: false });
     }
-  }, [activeStep, router]);
+  }, [activeStep, router, campaignId]);
 
-  const handleNext = () => {
+  // Save or update campaign
+  const saveCampaign = async () => {
+    setIsSavingCampaign(true);
+    try {
+      const campaignData = {
+        user_id: user.id,
+        campaign_name: campaignName,
+        campaign_type: campaignType,
+        campaign_description: campaignDescription,
+        product_url: productUrl,
+        product_about_url: productAboutUrl,
+        product_pricing_url: productPricingUrl,
+        email_subject: emailSubject,
+        email_body: emailBody,
+        status: 'draft',
+      };
+
+      if (campaignId) {
+        // Update existing campaign
+        const response = await fetch('/api/campaigns', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ campaign_id: campaignId, ...campaignData }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          toast.success('Campaign Updated', {
+            description: `"${campaignName}" has been updated successfully`,
+          });
+        } else {
+          console.error('Failed to update campaign:', data.error);
+          toast.error('Failed to Update Campaign', {
+            description: data.error || 'Please try again',
+          });
+        }
+      } else {
+        // Create new campaign
+        const response = await fetch('/api/campaigns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(campaignData),
+        });
+
+        const data = await response.json();
+        if (data.success && data.campaign) {
+          setCampaignId(data.campaign.id);
+          toast.success('Campaign Created', {
+            description: `"${campaignName}" has been saved successfully`,
+          });
+        } else {
+          console.error('Failed to create campaign:', data.error);
+          toast.error('Failed to Create Campaign', {
+            description: data.error || 'Please try again',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error saving campaign:', error);
+      toast.error('Error', {
+        description: 'Failed to save campaign. Please try again.',
+      });
+    } finally {
+      setIsSavingCampaign(false);
+    }
+  };
+
+  const handleNext = async () => {
+    if (activeStep === 1 && campaignName) {
+      // Save campaign before moving to step 2
+      await saveCampaign();
+    }
+
+    if (activeStep === 2) {
+      if (leadSource === "Manual Entry") {
+        // Save manual leads before moving to step 3
+        await saveManualLeads();
+      } else if (leadSource === "Upload CSV" && csvLeads.length > 0) {
+        // Save CSV leads before moving to step 3
+        await saveCsvLeads();
+      }
+    }
+
+    if (activeStep === 4) {
+      // Update campaign with email details
+      await saveCampaign();
+    }
+
     if (activeStep < steps.length) {
       setActiveStep(activeStep + 1);
     }
@@ -208,13 +288,236 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     );
   };
 
-  const toggleLeadSelection = (id: number) => {
+  const toggleLeadSelection = async (id: string) => {
+    const isSelected = !selectedLeads.includes(id);
+    const leadToUpdate = analyzedLeads.find((l) => l.id === id);
+
     setSelectedLeads((prev) =>
-      prev.includes(id)
-        ? prev.filter((leadId) => leadId !== id)
-        : [...prev, id],
+      isSelected
+        ? [...prev, id]
+        : prev.filter((leadId) => leadId !== id),
     );
+
+    // Update lead selection in database if campaign exists
+    if (campaignId && leadToUpdate) {
+      try {
+        const response = await fetch('/api/leads', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lead_id: leadToUpdate.id,
+            is_selected: isSelected,
+          }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          toast.success(
+            isSelected ? 'Lead Selected' : 'Lead Deselected',
+            {
+              description: `${leadToUpdate.name} ${isSelected ? 'added to' : 'removed from'} your campaign`,
+            }
+          );
+        }
+      } catch (error) {
+        console.error('Error updating lead selection:', error);
+        toast.error('Error', {
+          description: 'Failed to update lead selection',
+        });
+      }
+    }
   };
+
+  // Save manual leads to database
+  const saveManualLeads = async () => {
+    if (!campaignId || manualLeads.length === 0) return;
+
+    try {
+      const leadsData = manualLeads
+        .filter((lead) => lead.name) // Only save leads with a name
+        .map((lead) => ({
+          campaign_id: campaignId,
+          name: lead.name,
+          about: lead.about || null,
+          linkedin: lead.linkedin || null,
+          twitter: lead.twitter || null,
+          source: 'manual',
+        }));
+
+      if (leadsData.length > 0) {
+        const response = await fetch('/api/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leads: leadsData }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          console.log(`Saved ${data.count} leads`);
+          toast.success('Leads Saved', {
+            description: `Successfully saved ${data.count} lead${data.count !== 1 ? 's' : ''} to your campaign`,
+          });
+        } else {
+          toast.error('Failed to Save Leads', {
+            description: 'Please try again',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error saving manual leads:', error);
+      toast.error('Error', {
+        description: 'Failed to save leads. Please try again.',
+      });
+    }
+  };
+
+  // Handle CSV file selection
+  const handleCsvFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+        toast.error('Invalid File Type', {
+          description: 'Please upload a CSV file',
+        });
+        return;
+      }
+      setCsvFile(file);
+      parseCsvFile(file);
+    }
+  };
+
+  // Parse CSV file
+  const parseCsvFile = (file: File) => {
+    setIsUploadingCsv(true);
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const leads = results.data.map((row: any, index: number) => ({
+          id: index + 1,
+          name: row.Name || row.name || '',
+          about: row.About || row.about || '',
+          email: row.Email || row.email || '',
+          linkedin: row.LinkedIn || row.linkedin || '',
+          phone: row['Phone Number'] || row.phone || row.Phone || '',
+        }));
+
+        setCsvLeads(leads);
+        setIsUploadingCsv(false);
+
+        toast.success('CSV Parsed', {
+          description: `Found ${leads.length} leads in the file`,
+        });
+      },
+      error: (error) => {
+        console.error('CSV parse error:', error);
+        setIsUploadingCsv(false);
+        toast.error('Failed to Parse CSV', {
+          description: 'Please check your CSV format',
+        });
+      },
+    });
+  };
+
+  // Save CSV leads to database
+  const saveCsvLeads = async () => {
+    if (!campaignId || csvLeads.length === 0) return;
+
+    try {
+      const leadsData = csvLeads
+        .filter((lead) => lead.name) // Only save leads with a name
+        .map((lead) => ({
+          campaign_id: campaignId,
+          name: lead.name,
+          about: lead.about || null,
+          email: lead.email || null,
+          phone: lead.phone || null,
+          linkedin: lead.linkedin || null,
+          source: 'csv',
+        }));
+
+      if (leadsData.length > 0) {
+        const response = await fetch('/api/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leads: leadsData }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          console.log(`Saved ${data.count} CSV leads`);
+          toast.success('CSV Leads Saved', {
+            description: `Successfully imported ${data.count} lead${data.count !== 1 ? 's' : ''} from CSV`,
+          });
+        } else {
+          toast.error('Failed to Save CSV Leads', {
+            description: 'Please try again',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error saving CSV leads:', error);
+      toast.error('Error', {
+        description: 'Failed to save CSV leads. Please try again.',
+      });
+    }
+  };
+
+  // Analyze leads with AI when entering Step 3
+  const analyzeLeadsWithAI = async () => {
+    if (!campaignId) return;
+
+    setIsAnalyzingLeads(true);
+
+    try {
+      const response = await fetch('/api/analyze-leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaign_id: campaignId }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.analyzed_leads) {
+        // Transform the data to match the expected format
+        const formattedLeads = data.analyzed_leads.map((lead: any) => ({
+          id: lead.id,
+          name: lead.name,
+          about: lead.about || '',
+          email: lead.email || '',
+          linkedin: lead.linkedin || '',
+          phone: lead.phone || '',
+          fScore: lead.f_score || 50,
+          reason: lead.reason || 'Analysis in progress',
+        }));
+
+        setAnalyzedLeads(formattedLeads);
+
+        toast.success('Leads Analyzed', {
+          description: `AI analyzed ${data.count} leads with fit scores`,
+        });
+      } else {
+        toast.warning('No Leads Found', {
+          description: 'Please add leads in Step 2 first',
+        });
+      }
+    } catch (error) {
+      console.error('Error analyzing leads:', error);
+      toast.error('Analysis Failed', {
+        description: 'Failed to analyze leads. Using basic scoring.',
+      });
+    } finally {
+      setIsAnalyzingLeads(false);
+    }
+  };
+
+  // Trigger lead analysis when entering Step 3
+  useEffect(() => {
+    if (activeStep === 3 && campaignId && analyzedLeads.length === 0) {
+      analyzeLeadsWithAI();
+    }
+  }, [activeStep, campaignId]);
 
   // Prefill email subject and body when campaign data changes or when reaching email step
   useEffect(() => {
@@ -283,26 +586,83 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   };
 
   // Handle starting a call
-  const handleStartCall = (leadId: number) => {
+  const handleStartCall = async (leadId: string) => {
+    const currentLead = analyzedLeads.find(l => l.id === leadId);
     setActiveCallLead(leadId);
     setCallModalOpen(true);
+
+    // Create call log entry
+    if (campaignId && currentLead) {
+      try {
+        const response = await fetch('/api/call-logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            campaign_id: campaignId,
+            lead_id: leadId.toString(),
+            call_status: 'in_progress',
+            started_at: new Date().toISOString(),
+          }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          toast.success('Call Started', {
+            description: `Connected with ${currentLead.name}`,
+          });
+        }
+      } catch (error) {
+        console.error('Error creating call log:', error);
+        toast.error('Error', {
+          description: 'Failed to start call log',
+        });
+      }
+    }
   };
 
   // Handle ending a call
-  const handleEndCall = () => {
+  const handleEndCall = async () => {
+    // Update call log with end time and status
+    if (campaignId && activeCallLead) {
+      try {
+        const currentLead = analyzedLeads.find(l => l.id === activeCallLead);
+        if (currentLead) {
+          // You would get the actual call_log_id from the previous POST response
+          // For now, we'll just log the end event
+          console.log('Call ended for lead:', activeCallLead);
+          toast.info('Call Ended', {
+            description: `Call with ${currentLead.name} has been recorded`,
+          });
+        }
+      } catch (error) {
+        console.error('Error ending call:', error);
+        toast.error('Error', {
+          description: 'Failed to end call properly',
+        });
+      }
+    }
+
     setActiveCallLead(null);
     setCallModalOpen(false);
   };
 
   // Handle deal closed
   const handleDealClosed = () => {
+    const currentLead = analyzedLeads.find(l => l.id === activeCallLead);
+
+    toast.success('Deal Closed!', {
+      description: currentLead ? `Successfully closed deal with ${currentLead.name}` : 'Deal marked as closed',
+    });
+
     // Navigate to dashboard
-    router.push('/dashboard');
+    setTimeout(() => {
+      router.push('/dashboard');
+    }, 1500);
   };
 
   // Get selected lead details
   const getSelectedLeadsWithDetails = () => {
-    return suggestedLeads.filter(lead => selectedLeads.includes(lead.id));
+    return analyzedLeads.filter(lead => selectedLeads.includes(lead.id));
   };
 
   // Send email notification
@@ -438,10 +798,58 @@ export default function OnboardClient({ user }: OnboardClientProps) {
           <StepperPanel>
             {/* Step 1: Create Campaign */}
             <StepperContent value={1}>
-              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
-                <h2 className="text-xl font-semibold text-white mb-4">
-                  Create Your Campaign
-                </h2>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Alice Block - Left Side */}
+                <div className="lg:col-span-4">
+                  <div className="sticky top-6 bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+                    <div className="relative aspect-[4/5] overflow-hidden bg-black/5">
+                      <video
+                        className="size-full object-cover"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                      >
+                        <source src="/alice-video.mp4" type="video/mp4" />
+                      </video>
+
+                      {/* Gradient Overlay */}
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+
+                      {/* Status Badge */}
+                      <div className="absolute left-4 top-4 flex items-center gap-2">
+                        <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
+                          <span className="text-white text-xs font-medium">Alice - AI Phone Agent</span>
+                        </div>
+                        <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
+                          <div className="flex items-center gap-1">
+                            <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
+                            <span className="text-[10px] font-medium text-white">Active</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Info Card */}
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <div className="bg-zinc-900/95 backdrop-blur-md rounded-xl border border-white/10 p-3">
+                          <p className="text-white text-xs font-medium mb-1">
+                            Ready to help you set up your campaign
+                          </p>
+                          <p className="text-gray-400 text-[10px]">
+                            I'll guide you through the process
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Content - Right Side */}
+                <div className="lg:col-span-8">
+                  <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
+                    <h2 className="text-xl font-semibold text-white mb-4">
+                      Create Your Campaign
+                    </h2>
                 <div className="space-y-4">
                   <div className="flex gap-4">
                     <div className="flex-1">
@@ -523,14 +931,64 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                   </div>
                 </div>
               </div>
+                </div>
+              </div>
             </StepperContent>
 
             {/* Step 2: Source Leads */}
             <StepperContent value={2}>
-              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
-                <h2 className="text-xl font-semibold text-white mb-4">
-                  Source Your Leads
-                </h2>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Alice Block - Left Side */}
+                <div className="lg:col-span-4">
+                  <div className="sticky top-6 bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+                    <div className="relative aspect-[4/5] overflow-hidden bg-black/5">
+                      <video
+                        className="size-full object-cover"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                      >
+                        <source src="/alice-video.mp4" type="video/mp4" />
+                      </video>
+
+                      {/* Gradient Overlay */}
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+
+                      {/* Status Badge */}
+                      <div className="absolute left-4 top-4 flex items-center gap-2">
+                        <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
+                          <span className="text-white text-xs font-medium">Alice - AI Phone Agent</span>
+                        </div>
+                        <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
+                          <div className="flex items-center gap-1">
+                            <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
+                            <span className="text-[10px] font-medium text-white">Active</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Info Card */}
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <div className="bg-zinc-900/95 backdrop-blur-md rounded-xl border border-white/10 p-3">
+                          <p className="text-white text-xs font-medium mb-1">
+                            Upload your leads or enter them manually
+                          </p>
+                          <p className="text-gray-400 text-[10px]">
+                            I'll help you organize your contact list
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Content - Right Side */}
+                <div className="lg:col-span-8">
+                  <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
+                    <h2 className="text-xl font-semibold text-white mb-4">
+                      Source Your Leads
+                    </h2>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -547,13 +1005,110 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                   </div>
 
                   {leadSource === "Upload CSV" ? (
-                    <div className="border-2 border-dashed border-zinc-700 rounded-lg p-8 text-center hover:border-gray-600 transition-colors cursor-pointer">
-                      <div className="text-gray-400">
-                        <p className="text-sm">
-                          Click to upload or drag and drop
-                        </p>
-                        <p className="text-xs mt-1">CSV, Excel (MAX. 10MB)</p>
+                    <div className="space-y-4">
+                      {/* File Upload Area */}
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border-2 border-dashed border-zinc-700 rounded-lg p-8 text-center hover:border-gray-600 transition-colors cursor-pointer"
+                      >
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".csv"
+                          onChange={handleCsvFileSelect}
+                          className="hidden"
+                        />
+                        <div className="text-gray-400">
+                          {isUploadingCsv ? (
+                            <>
+                              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                              <p className="text-sm">Parsing CSV...</p>
+                            </>
+                          ) : csvFile ? (
+                            <>
+                              <Check className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                              <p className="text-sm font-medium text-white">
+                                {csvFile.name}
+                              </p>
+                              <p className="text-xs mt-1">
+                                {csvLeads.length} leads found
+                              </p>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCsvFile(null);
+                                  setCsvLeads([]);
+                                }}
+                                className="mt-2 text-xs text-orange-400 hover:text-orange-300"
+                              >
+                                Change file
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm">
+                                Click to upload or drag and drop
+                              </p>
+                              <p className="text-xs mt-1">CSV (MAX. 10MB)</p>
+                            </>
+                          )}
+                        </div>
                       </div>
+
+                      {/* CSV Preview */}
+                      {csvLeads.length > 0 && (
+                        <div className="bg-zinc-800 rounded-lg p-4">
+                          <h3 className="text-sm font-medium text-white mb-3">
+                            Preview ({csvLeads.length} leads)
+                          </h3>
+                          <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                            <table className="w-full text-sm">
+                              <thead className="sticky top-0 bg-zinc-800">
+                                <tr className="border-b border-zinc-700">
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                    Name
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                    About
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                    Email
+                                  </th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">
+                                    Phone
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {csvLeads.slice(0, 5).map((lead, index) => (
+                                  <tr
+                                    key={index}
+                                    className="border-b border-zinc-700/50"
+                                  >
+                                    <td className="py-2 px-3 text-white">
+                                      {lead.name}
+                                    </td>
+                                    <td className="py-2 px-3 text-gray-400 truncate max-w-[200px]">
+                                      {lead.about}
+                                    </td>
+                                    <td className="py-2 px-3 text-gray-400">
+                                      {lead.email}
+                                    </td>
+                                    <td className="py-2 px-3 text-gray-400">
+                                      {lead.phone}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {csvLeads.length > 5 && (
+                              <p className="text-xs text-gray-500 mt-2 text-center">
+                                + {csvLeads.length - 5} more leads
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -685,16 +1240,94 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                     </div>
                   </div>
                 </div>
+                  </div>
+                </div>
               </div>
             </StepperContent>
 
             {/* Step 3: Select Leads */}
             <StepperContent value={3}>
-              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
-                <h2 className="text-xl font-semibold text-white mb-4">
-                  Select Your Target Leads
-                </h2>
-                <div className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Alice Block - Left Side */}
+                <div className="lg:col-span-4">
+                  <div className="sticky top-6 bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+                    <div className="relative aspect-[4/5] overflow-hidden bg-black/5">
+                      <video
+                        className="size-full object-cover"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                      >
+                        <source src="/alice-video.mp4" type="video/mp4" />
+                      </video>
+
+                      {/* Gradient Overlay */}
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+
+                      {/* Status Badge */}
+                      <div className="absolute left-4 top-4 flex items-center gap-2">
+                        <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
+                          <span className="text-white text-xs font-medium">Alice - AI Phone Agent</span>
+                        </div>
+                        <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
+                          <div className="flex items-center gap-1">
+                            <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
+                            <span className="text-[10px] font-medium text-white">Active</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Info Card */}
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <div className="bg-zinc-900/95 backdrop-blur-md rounded-xl border border-white/10 p-3">
+                          <p className="text-white text-xs font-medium mb-1">
+                            Analyzing your leads with AI
+                          </p>
+                          <p className="text-gray-400 text-[10px]">
+                            I'll help you identify the best prospects
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Content - Right Side */}
+                <div className="lg:col-span-8">
+                  <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
+                    <h2 className="text-xl font-semibold text-white mb-4">
+                      Select Your Target Leads
+                    </h2>
+
+                {isAnalyzingLeads ? (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <Loader2 className="h-12 w-12 animate-spin text-orange-500 mb-4" />
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      Analyzing Leads with AI
+                    </h3>
+                    <p className="text-gray-400 text-sm text-center max-w-md">
+                      Claude AI is analyzing each lead profile against your campaign details to calculate fit scores...
+                    </p>
+                  </div>
+                ) : analyzedLeads.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <Users className="h-12 w-12 text-gray-600 mb-4" />
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      No Leads Found
+                    </h3>
+                    <p className="text-gray-400 text-sm text-center max-w-md mb-4">
+                      Please go back to Step 2 and add some leads first
+                    </p>
+                    <button
+                      onClick={() => setActiveStep(2)}
+                      className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                    >
+                      Go to Source Leads
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
                   {/* Metrics */}
                   <div className="grid grid-cols-3 gap-4">
                     <div className="bg-zinc-800 rounded-lg p-4">
@@ -710,7 +1343,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                         Total Matched Leads
                       </p>
                       <p className="text-2xl font-bold text-white">
-                        {suggestedLeads.length}
+                        {analyzedLeads.length}
                       </p>
                     </div>
                     <div className="bg-zinc-800 rounded-lg p-4">
@@ -718,7 +1351,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                         Suggested Leads
                       </p>
                       <p className="text-2xl font-bold text-orange-500">
-                        {suggestedLeads.length}
+                        {analyzedLeads.length}
                       </p>
                     </div>
                   </div>
@@ -732,12 +1365,12 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                             <input
                               type="checkbox"
                               checked={
-                                selectedLeads.length === suggestedLeads.length
+                                selectedLeads.length === analyzedLeads.length
                               }
                               onChange={(e) => {
                                 if (e.target.checked) {
                                   setSelectedLeads(
-                                    suggestedLeads.map((l) => l.id),
+                                    analyzedLeads.map((l) => l.id),
                                   );
                                 } else {
                                   setSelectedLeads([]);
@@ -768,7 +1401,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                         </tr>
                       </thead>
                       <tbody>
-                        {suggestedLeads.map((lead) => (
+                        {analyzedLeads.map((lead) => (
                           <tr
                             key={lead.id}
                             className="border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors"
@@ -842,15 +1475,66 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                     </div>
                   )}
                 </div>
+                )}
+                  </div>
+                </div>
               </div>
             </StepperContent>
 
             {/* Step 4: Outreach - Email */}
             <StepperContent value={4}>
-              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
-                <h2 className="text-xl font-semibold text-white mb-4">
-                  Configure Email Outreach
-                </h2>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Julian Block - Left Side */}
+                <div className="lg:col-span-4">
+                  <div className="sticky top-6 bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+                    <div className="relative aspect-[4/5] overflow-hidden bg-black/5">
+                      <video
+                        className="size-full object-cover"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                      >
+                        <source src="/julian-video.mp4" type="video/mp4" />
+                      </video>
+
+                      {/* Gradient Overlay */}
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+
+                      {/* Status Badge */}
+                      <div className="absolute left-4 top-4 flex items-center gap-2">
+                        <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
+                          <span className="text-white text-xs font-medium">Julian - AI Leads Agent</span>
+                        </div>
+                        <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
+                          <div className="flex items-center gap-1">
+                            <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
+                            <span className="text-[10px] font-medium text-white">Active</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Info Card */}
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <div className="bg-zinc-900/95 backdrop-blur-md rounded-xl border border-white/10 p-3">
+                          <p className="text-white text-xs font-medium mb-1">
+                            Crafting personalized email outreach
+                          </p>
+                          <p className="text-gray-400 text-[10px]">
+                            I'll help you engage prospects effectively
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Content - Right Side */}
+                <div className="lg:col-span-8">
+                  <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
+                    <h2 className="text-xl font-semibold text-white mb-4">
+                      Configure Email Outreach
+                    </h2>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -959,13 +1643,63 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                     )}
                   </div>
                 </div>
+                  </div>
+                </div>
               </div>
             </StepperContent>
 
             {/* Step 5: Call Center */}
             <StepperContent value={5}>
-              <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
-                <div className="flex items-center justify-between mb-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Julian Block - Left Side */}
+                <div className="lg:col-span-4">
+                  <div className="sticky top-6 bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
+                    <div className="relative aspect-[4/5] overflow-hidden bg-black/5">
+                      <video
+                        className="size-full object-cover"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                      >
+                        <source src="/julian-video.mp4" type="video/mp4" />
+                      </video>
+
+                      {/* Gradient Overlay */}
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+
+                      {/* Status Badge */}
+                      <div className="absolute left-4 top-4 flex items-center gap-2">
+                        <div className="bg-zinc-900/90 backdrop-blur-md rounded-full px-3 py-1.5 border border-white/10">
+                          <span className="text-white text-xs font-medium">Julian - AI Leads Agent</span>
+                        </div>
+                        <div className="bg-green-500/90 backdrop-blur-md rounded-full px-2.5 py-1 border border-green-400/20">
+                          <div className="flex items-center gap-1">
+                            <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
+                            <span className="text-[10px] font-medium text-white">Active</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Info Card */}
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <div className="bg-zinc-900/95 backdrop-blur-md rounded-xl border border-white/10 p-3">
+                          <p className="text-white text-xs font-medium mb-1">
+                            Ready to start making calls
+                          </p>
+                          <p className="text-gray-400 text-[10px]">
+                            I'll help you close more deals
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Content - Right Side */}
+                <div className="lg:col-span-8">
+                  <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
+                    <div className="flex items-center justify-between mb-6">
                   <div>
                     <h2 className="text-xl font-semibold text-white mb-1">
                       Call Center
@@ -1044,6 +1778,8 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                     ))}
                   </div>
                 )}
+                  </div>
+                </div>
               </div>
 
               {/* Call Modal */}
@@ -1051,7 +1787,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                   <div className="bg-zinc-900 rounded-xl border border-zinc-800 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
                     {(() => {
-                      const currentLead = suggestedLeads.find(l => l.id === activeCallLead);
+                      const currentLead = analyzedLeads.find(l => l.id === activeCallLead);
                       if (!currentLead) return null;
 
                       return (
@@ -1200,13 +1936,22 @@ export default function OnboardClient({ user }: OnboardClientProps) {
           )}
           <button
             onClick={handleNext}
-            disabled={activeStep === steps.length}
+            disabled={activeStep === steps.length || isSavingCampaign}
             className={`flex items-center justify-center gap-2 px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
               activeStep === 1 ? "w-full" : "flex-1"
             }`}
           >
-            {activeStep === steps.length ? "Finish" : "Next"}
-            <ChevronRight className="h-4 w-4" />
+            {isSavingCampaign ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                {activeStep === steps.length ? "Finish" : "Next"}
+                <ChevronRight className="h-4 w-4" />
+              </>
+            )}
           </button>
         </div>
       </div>

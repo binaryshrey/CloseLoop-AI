@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import { withAuth } from "@workos-inc/authkit-nextjs";
+import { Toaster } from "sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,7 +34,10 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased`}
       >
-        <AuthKitProvider initialAuth={initialAuth}>{children}</AuthKitProvider>
+        <AuthKitProvider initialAuth={initialAuth}>
+          {children}
+          <Toaster position="bottom-right" richColors closeButton />
+        </AuthKitProvider>
       </body>
     </html>
   );
