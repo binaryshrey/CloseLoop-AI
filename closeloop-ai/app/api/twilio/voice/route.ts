@@ -104,6 +104,18 @@ export async function POST(request: NextRequest) {
                   output_format: 'ulaw_8000',
                 },
               },
+              dynamic_variables: {
+                _agent_name_: 'Jordan Belfort',
+                _sender_company_: 'CloseLoop AI',
+                _product_name_: 'CloseLoop AI',
+                _prospect_name_: 'there',
+                _company_name_: '',
+                _product_description_: 'An autonomous AI-powered sales platform that intelligently qualifies prospects, orchestrates personalized multi-channel outreach campaigns, and conducts live sales calls.',
+                _product_pricing_: 'Starter at $49 per month, Pro at $149 per month, and Enterprise at $399 per month',
+                _current_offer_: '14-day free trial with no credit card required',
+                _support_email_: 'support@closeloop.ai',
+                _calendar_link_: 'https://cal.com/closeloop/demo',
+              },
             },
           }),
         }
