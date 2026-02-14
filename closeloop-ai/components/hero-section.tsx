@@ -6,6 +6,7 @@ import Image from "next/image";
 import { TextEffect } from "@/components/ui/text-effect";
 import { AnimatedGroup } from "@/components/ui/animated-group";
 import { HeroHeader } from "./header";
+import { Highlighter } from "@/components/ui/highlighter";
 
 const transitionVariants = {
   item: {
@@ -116,18 +117,41 @@ export default function HeroSection() {
                 >
                   Score Your Leads, Automate Your Outreach, Close Your Deals.
                 </TextEffect>
-                <TextEffect
-                  per="line"
-                  preset="fade-in-blur"
-                  speedSegment={0.3}
-                  delay={0.5}
-                  as="p"
-                  className="mx-auto mt-8 max-w-2xl text-balance text-lg"
-                >
-                  Autonomous AI agents that intelligently qualify prospects,
-                  orchestrate personalized channel campaigns, and conduct live
-                  sales calls, turning your pipeline into predictable revenue.
-                </TextEffect>
+                <p className="mx-auto mt-8 max-w-2xl text-balance text-lg">
+                  <Highlighter action="underline" color="#FF9800">
+                    <TextEffect
+                      per="word"
+                      preset="fade-in-blur"
+                      speedSegment={0.3}
+                      delay={0.5}
+                      as="span"
+                    >
+                      Autonomous AI agents
+                    </TextEffect>
+                  </Highlighter>
+                  <TextEffect
+                    per="word"
+                    preset="fade-in-blur"
+                    speedSegment={0.5}
+                    delay={0.1}
+                    as="span"
+                  >
+                    {
+                      " that intelligently qualify prospects, orchestrate personalized channel campaigns, and conduct live sales calls, turning your pipeline into "
+                    }
+                  </TextEffect>
+                  <Highlighter action="underline" color="#FF9800">
+                    <TextEffect
+                      per="word"
+                      preset="fade-in-blur"
+                      speedSegment={0.3}
+                      delay={0.6}
+                      as="span"
+                    >
+                      predictable revenue.
+                    </TextEffect>
+                  </Highlighter>
+                </p>
 
                 <AnimatedGroup
                   variants={{
