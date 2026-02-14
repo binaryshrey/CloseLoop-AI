@@ -104,12 +104,15 @@ export async function POST(request: NextRequest) {
       // Set up Twilio Media Stream to connect to ElevenLabs WebSocket
       const connect = twiml.connect();
 
-      // Create the stream with the signed URL
+      // Create the stream with the signed URL and proper configuration
+      // Track 'both_tracks' ensures bidirectional audio (caller and agent)
       connect.stream({
         url: signed_url,
+        track: 'both_tracks', // Stream both inbound and outbound audio
       });
 
       console.log('✅ TwiML stream object created successfully');
+      console.log('   Track mode: both_tracks (bidirectional audio)');
       const twimlXml = twiml.toString();
       console.log('📄 Generated TwiML:');
       console.log('─────────────────────────────────────');
