@@ -16,13 +16,6 @@ export async function POST(request: NextRequest) {
 
     const twiml = new VoiceResponse();
 
-    // For now, let's test with a simple voice response to verify the call works
-    twiml.say({
-      voice: 'alice',
-    }, 'Hello! This is CloseLoop A I. Connecting you to our AI sales agent now.');
-
-    twiml.pause({ length: 1 });
-
     // Validate required environment variables
     if (!process.env.ELEVENLABS_AGENT_ID) {
       console.error('ELEVENLABS_AGENT_ID is not set');
@@ -46,40 +39,38 @@ export async function POST(request: NextRequest) {
 
     // Connect the call to ElevenLabs agent via WebSocket
     try {
+      // First, get a signed URL from ElevenLabs
+      const signedUrlResponse = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${process.env.ELEVENLABS_AGENT_ID}`,
+        {
+          method: 'GET',
+          headers: {
+            'xi-api-key': process.env.ELEVENLABS_API_KEY || '',
+          },
+        }
+      );
+
+      if (!signedUrlResponse.ok) {
+        const errorText = await signedUrlResponse.text();
+        console.error('Failed to get signed URL from ElevenLabs:', errorText);
+        throw new Error(`ElevenLabs API error: ${signedUrlResponse.status}`);
+      }
+
+      const { signed_url } = await signedUrlResponse.json();
+
+      console.log('Got signed URL from ElevenLabs');
+
       const connect = twiml.connect();
-
-      // Build the WebSocket URL with signed token approach
-      // ElevenLabs requires the API key in a specific format for Twilio
-      const websocketUrl = `wss://api.elevenlabs.io/v1/convai/conversation`;
-
       const stream = connect.stream({
-        url: websocketUrl,
-      });
-
-      // Pass required parameters for ElevenLabs authentication
-      stream.parameter({
-        name: 'agent_id',
-        value: process.env.ELEVENLABS_AGENT_ID,
-      });
-
-      stream.parameter({
-        name: 'api_key',
-        value: process.env.ELEVENLABS_API_KEY,
-      });
-
-      // Pass call metadata
-      stream.parameter({
-        name: 'call_id',
-        value: callSid,
+        url: signed_url,
       });
 
       console.log('TwiML with stream generated successfully');
       console.log('Agent ID:', process.env.ELEVENLABS_AGENT_ID);
-      console.log('WebSocket URL:', websocketUrl);
       console.log('Call metadata:', { callSid, from, to });
     } catch (streamError) {
       console.error('Error creating stream:', streamError);
-      twiml.say('There was an error connecting to the AI agent. The call will now end.');
+      twiml.say('There was an error connecting to the AI agent. Please try again later.');
       twiml.hangup();
     }
 
