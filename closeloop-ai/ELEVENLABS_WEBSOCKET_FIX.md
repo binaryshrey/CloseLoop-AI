@@ -1,28 +1,46 @@
-# ElevenLabs WebSocket Error 31921 - Troubleshooting Guide
+# ElevenLabs WebSocket Errors - Troubleshooting Guide
 
-## 🎯 Root Cause
+## 🎯 Common Errors
 
-Twilio Error **31921** means: **ElevenLabs WebSocket closed the connection immediately**
+### Error 31921: Stream - WebSocket - Close Error
+**Meaning:** ElevenLabs WebSocket closed the connection immediately
 
-Your app is working correctly, but ElevenLabs is rejecting the WebSocket connection.
+### Error 31941: Stream - Invalid Track Configuration
+**Meaning:** The `track` parameter in Twilio Stream configuration is invalid
+
+## ✅ Latest Fix Applied
+
+**Error 31941 was caused by adding `track: 'both_tracks'` parameter.**
+
+Your app is working correctly, but the stream configuration was incompatible with ElevenLabs signed URLs.
 
 ---
 
 ## ✅ What I Fixed
 
-### 1. Added `track: 'both_tracks'` to Stream Configuration
+### Latest Fix (Error 31941)
+
+**Problem:** Adding `track: 'both_tracks'` caused "Invalid Track Configuration" error.
+
+**Solution:** Removed the `track` parameter entirely.
 
 **File:** `app/api/twilio/voice/route.ts`
 
 **Change:**
 ```typescript
+// BEFORE (caused error 31941):
 connect.stream({
   url: signed_url,
-  track: 'both_tracks', // Ensures bidirectional audio
+  track: 'both_tracks', // This was invalid!
+});
+
+// AFTER (correct):
+connect.stream({
+  url: signed_url, // ElevenLabs handles audio routing internally
 });
 ```
 
-This ensures both caller audio (inbound) and agent audio (outbound) are streamed, which is required for conversational AI.
+**Why this works:** ElevenLabs signed URLs already configure bidirectional audio internally. Adding the `track` parameter causes a conflict with their WebSocket protocol.
 
 ---
 
