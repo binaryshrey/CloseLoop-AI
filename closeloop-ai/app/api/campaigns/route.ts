@@ -6,7 +6,34 @@ import type { CampaignInsert, CampaignUpdate } from '@/types/database';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    console.log('[Campaigns API] Creating campaign with data:', JSON.stringify(body, null, 2));
+
     const supabase = createServerSupabaseClient();
+
+    // Validate required fields
+    if (!body.user_id) {
+      console.error('[Campaigns API] Missing user_id');
+      return NextResponse.json(
+        { error: 'Missing required field: user_id' },
+        { status: 400 }
+      );
+    }
+
+    if (!body.campaign_name) {
+      console.error('[Campaigns API] Missing campaign_name');
+      return NextResponse.json(
+        { error: 'Missing required field: campaign_name' },
+        { status: 400 }
+      );
+    }
+
+    if (!body.campaign_type) {
+      console.error('[Campaigns API] Missing campaign_type');
+      return NextResponse.json(
+        { error: 'Missing required field: campaign_type' },
+        { status: 400 }
+      );
+    }
 
     const campaignData: CampaignInsert = {
       user_id: body.user_id,
@@ -21,6 +48,8 @@ export async function POST(request: NextRequest) {
       status: body.status || 'draft',
     };
 
+    console.log('[Campaigns API] Inserting campaign data:', JSON.stringify(campaignData, null, 2));
+
     const { data, error } = await supabase
       .from('campaigns')
       // @ts-ignore - Supabase type inference issue
@@ -29,21 +58,39 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error('Error creating campaign:', error);
+      console.error('[Campaigns API] Supabase error:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
       return NextResponse.json(
-        { error: 'Failed to create campaign', details: error.message },
+        {
+          error: 'Failed to create campaign',
+          details: error.message,
+          hint: error.hint,
+          code: error.code
+        },
         { status: 500 }
       );
     }
 
+    console.log('[Campaigns API] Campaign created successfully:', (data as any)?.id);
     return NextResponse.json({
       success: true,
       campaign: data,
     });
-  } catch (error) {
-    console.error('Error in POST /api/campaigns:', error);
+  } catch (error: any) {
+    console.error('[Campaigns API] Unexpected error:', {
+      message: error?.message,
+      stack: error?.stack,
+      error: error
+    });
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Internal server error',
+        details: error?.message || 'Unknown error'
+      },
       { status: 500 }
     );
   }
