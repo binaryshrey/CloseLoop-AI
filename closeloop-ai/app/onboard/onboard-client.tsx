@@ -114,7 +114,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
 
   // Live call state
   const [activeCallSid, setActiveCallSid] = useState<string | null>(null);
-  const [confidenceScore, setConfidenceScore] = useState(0);
+  const [confidenceScore, setConfidenceScore] = useState(50);
   const [callDuration, setCallDuration] = useState(0);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const confidenceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -622,6 +622,31 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     }
   };
 
+  // Start confidence animation when entering Step 5 (outreach-call)
+  useEffect(() => {
+    if (activeStep === 5) {
+      setConfidenceScore(50);
+      let current = 50;
+      const target = 93;
+      confidenceTimerRef.current = setInterval(() => {
+        if (current >= target) {
+          if (confidenceTimerRef.current) clearInterval(confidenceTimerRef.current);
+          return;
+        }
+        const remaining = target - current;
+        const step = Math.max(1, Math.floor(remaining / 10));
+        current = Math.min(current + step, target);
+        setConfidenceScore(current);
+      }, 500);
+    }
+    return () => {
+      if (confidenceTimerRef.current) {
+        clearInterval(confidenceTimerRef.current);
+        confidenceTimerRef.current = null;
+      }
+    };
+  }, [activeStep]);
+
   // Trigger lead analysis when entering Step 3
   useEffect(() => {
     if (activeStep === 3 && campaignId && analyzedLeads.length === 0) {
@@ -715,7 +740,6 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     }
 
     // Reset live call state
-    setConfidenceScore(0);
     setActiveCallSid(null);
 
     setActiveCallLead(leadId);
@@ -835,29 +859,13 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     }, 1500);
   };
 
-  // Start call timer and confidence animation
+  // Start call timer
   const startCallTimer = () => {
     setCallDuration(0);
-    setConfidenceScore(0);
 
     callTimerRef.current = setInterval(() => {
       setCallDuration((prev) => prev + 1);
     }, 1000);
-
-    // Animate confidence from 0 to 93 over ~30 seconds
-    let current = 0;
-    const target = 93;
-    confidenceTimerRef.current = setInterval(() => {
-      if (current >= target) {
-        if (confidenceTimerRef.current) clearInterval(confidenceTimerRef.current);
-        return;
-      }
-      // Ease-out: fast at start, slower near end
-      const remaining = target - current;
-      const step = Math.max(1, Math.floor(remaining / 10));
-      current = Math.min(current + step, target);
-      setConfidenceScore(current);
-    }, 500);
   };
 
   // Stop call timer
@@ -865,10 +873,6 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;
-    }
-    if (confidenceTimerRef.current) {
-      clearInterval(confidenceTimerRef.current);
-      confidenceTimerRef.current = null;
     }
   };
 
