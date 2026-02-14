@@ -19,13 +19,7 @@ export async function POST(request: NextRequest) {
     // For now, let's test with a simple voice response to verify the call works
     twiml.say({
       voice: 'alice',
-    }, 'Hello! This is CloseLoop A I. Your phone call is working correctly. The trial account message is normal and cannot be removed without upgrading your Twilio account. This is a test to confirm the call stays connected.');
-
-    twiml.pause({ length: 2 });
-
-    twiml.say({
-      voice: 'alice',
-    }, 'Now I will try to connect you to the ElevenLabs AI agent.');
+    }, 'Hello! This is CloseLoop A I. Connecting you to our AI sales agent now.');
 
     twiml.pause({ length: 1 });
 
@@ -33,8 +27,11 @@ export async function POST(request: NextRequest) {
     try {
       const connect = twiml.connect();
 
+      // Build the WebSocket URL with parameters
+      const baseUrl = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${process.env.ELEVENLABS_AGENT_ID}`;
+      
       const stream = connect.stream({
-        url: `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${process.env.ELEVENLABS_AGENT_ID}`,
+        url: baseUrl,
       });
 
       // Pass ElevenLabs API key for authentication
@@ -49,7 +46,17 @@ export async function POST(request: NextRequest) {
         value: callSid,
       });
 
+      // Configure ElevenLabs to send transcript webhooks to our endpoint
+      // The webhook URL must be publicly accessible (use ngrok for local dev)
+      const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/elevenlabs/webhook`;
+      
+      stream.parameter({
+        name: 'webhook_url',
+        value: webhookUrl,
+      });
+
       console.log('TwiML with stream generated successfully');
+      console.log('Webhook URL configured:', webhookUrl);
     } catch (streamError) {
       console.error('Error creating stream:', streamError);
       twiml.say('There was an error connecting to the AI agent. The call will now end.');

@@ -18,19 +18,69 @@ export async function POST(request: NextRequest) {
     const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 
     if (!accountSid || !authToken || !twilioPhoneNumber) {
+      console.error('Missing Twilio credentials:', {
+        hasAccountSid: !!accountSid,
+        hasAuthToken: !!authToken,
+        hasTwilioNumber: !!twilioPhoneNumber,
+      });
       return NextResponse.json(
-        { error: 'Twilio credentials not configured' },
+        { 
+          error: 'Twilio credentials not configured',
+          details: 'Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_PHONE_NUMBER in environment variables'
+        },
         { status: 500 }
       );
     }
 
     const client = twilio(accountSid, authToken);
 
-    // Use production URL for Twilio webhooks (Twilio can't reach localhost)
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${request.headers.get('host')}`;
+    // Determine the webhook URL
+    const host = request.headers.get('host') || '';
+    const isLocalDev = host.includes('localhost') || host.includes('127.0.0.1');
+    
+    // Get the configured URL
+    const configuredUrl = process.env.NEXT_PUBLIC_APP_URL;
+    
+    // Use the configured URL, but warn if it's production and we're running locally
+    const baseUrl = configuredUrl || `https://${host}`;
     const webhookUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 
+    // If running locally but pointing to production URL, warn the user
+    if (isLocalDev && configuredUrl && !configuredUrl.includes('localhost') && !configuredUrl.includes('ngrok')) {
+      console.warn('⚠️  Local development detected but NEXT_PUBLIC_APP_URL points to production');
+      console.warn(`Host: ${host}`);
+      console.warn(`Configured URL: ${configuredUrl}`);
+      return NextResponse.json(
+        { 
+          error: 'Configuration mismatch',
+          message: 'Running locally but NEXT_PUBLIC_APP_URL points to production. Real calls only work when deployed.',
+          suggestion: 'Use "Demo Mode" to test locally, or deploy to production to make real calls.',
+          details: {
+            currentHost: host,
+            configuredUrl: configuredUrl,
+          }
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if using localhost (won't work with Twilio webhooks)
+    if (webhookUrl.includes('localhost') || webhookUrl.includes('127.0.0.1')) {
+      console.warn('⚠️  Using localhost URL - Twilio webhooks will not work!');
+      console.warn('For real calls, use ngrok or deploy to production');
+      return NextResponse.json(
+        { 
+          error: 'Local development detected',
+          message: 'Twilio requires a public URL for webhooks.',
+          suggestion: 'Use "Demo Mode" to test locally, or deploy to production for real calls.'
+        },
+        { status: 400 }
+      );
+    }
+
     console.log('Using webhook URL:', webhookUrl);
+    console.log('Calling from:', twilioPhoneNumber);
+    console.log('Calling to:', to);
 
     // Make the outbound call
     const call = await client.calls.create({
@@ -41,7 +91,7 @@ export async function POST(request: NextRequest) {
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
     });
 
-    console.log('Call initiated:', call.sid);
+    console.log('Call initiated successfully:', call.sid);
 
     return NextResponse.json({
       success: true,
@@ -52,10 +102,19 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error making call:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      status: error.status,
+      moreInfo: error.moreInfo,
+    });
+    
     return NextResponse.json(
       {
         error: 'Failed to initiate call',
         message: error.message,
+        code: error.code,
+        details: error.moreInfo || 'Check server logs for more information',
       },
       { status: 500 }
     );

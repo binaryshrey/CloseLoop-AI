@@ -30,8 +30,11 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisResult | null>(null);
   const [callDuration, setCallDuration] = useState(0);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const durationInterval = useRef<NodeJS.Timeout | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const analysisQueueRef = useRef<boolean>(false);
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -56,6 +59,57 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
     };
   }, [isCallActive]);
 
+  // Set up Server-Sent Events connection for real-time transcripts
+  useEffect(() => {
+    if (callSid && isCallActive) {
+      console.log('Establishing SSE connection for call:', callSid);
+      
+      const eventSource = new EventSource(`/api/transcript/stream?callSid=${callSid}`);
+      eventSourceRef.current = eventSource;
+
+      eventSource.onopen = () => {
+        console.log('SSE connection opened');
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('SSE message received:', data);
+
+          if (data.type === 'connected') {
+            console.log('Connected to transcript stream');
+          } else if (data.type === 'transcript' && data.data) {
+            const entry: TranscriptEntry = {
+              ...data.data,
+              timestamp: new Date(data.data.timestamp),
+            };
+            
+            setTranscript((prev) => [...prev, entry]);
+            
+            // Trigger analysis for each new transcript entry
+            analyzeTranscriptRealtime(entry);
+          } else if (data.type === 'call_ended') {
+            console.log('Call ended via SSE');
+            setIsCallActive(false);
+          }
+        } catch (error) {
+          console.error('Error parsing SSE data:', error);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('SSE error:', error);
+        eventSource.close();
+      };
+
+      return () => {
+        console.log('Cleaning up SSE connection');
+        eventSource.close();
+        eventSourceRef.current = null;
+      };
+    }
+  }, [callSid, isCallActive]);
+
   // Format duration
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -68,6 +122,9 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
     const targetNumber = '+13472229576'; // Your phone number
 
     setIsInitiating(true);
+    setTranscript([]); // Clear previous transcript
+    setCurrentAnalysis(null); // Clear previous analysis
+    
     try {
       // Use the Twilio make-call endpoint for REAL phone calls
       const response = await fetch('/api/twilio/make-call', {
@@ -83,19 +140,19 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
         setIsCallActive(true);
         setCallDuration(0);
 
-        // Show message about real call
+        // Show message about call initiation
         const initialMessage: TranscriptEntry = {
           id: `msg-initial`,
           speaker: 'agent',
-          text: `Calling ${targetNumber} from ${data.from}... Phone should be ringing now!`,
+          text: `📞 Calling ${targetNumber}... The call is being connected with ElevenLabs AI agent. Transcription will appear in real-time.`,
           timestamp: new Date(),
         };
         setTranscript([initialMessage]);
-
-        // Note: Real transcript would come from Twilio/ElevenLabs webhooks
-        // For now, just show call initiated message
       } else {
-        alert(`Failed to initiate call: ${data.error || data.message}`);
+        // Show detailed error message
+        const errorMsg = data.message || data.error || 'Unknown error';
+        const suggestion = data.suggestion || 'Please check your configuration.';
+        alert(`⚠️ ${errorMsg}\n\n💡 ${suggestion}`);
       }
     } catch (error) {
       console.error('Error initiating call:', error);
@@ -105,49 +162,35 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
     }
   };
 
+
+
   // End call
   const endCall = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
     setIsCallActive(false);
     setCallDuration(0);
   };
 
-  // Simulate transcript for demo (replace with WebSocket in production)
-  const simulateTranscript = () => {
-    const demoMessages = [
-      { speaker: 'agent' as const, text: "Hello! I'm calling from CloseLoop AI. How are you today?" },
-      { speaker: 'prospect' as const, text: "Hi, I'm doing well, thanks. What can I do for you?" },
-      { speaker: 'agent' as const, text: "I wanted to share information about our AI-powered sales automation platform that can help increase your conversion rates by up to 40%." },
-      { speaker: 'prospect' as const, text: "That sounds interesting. Tell me more about how it works." },
-      { speaker: 'agent' as const, text: "Our platform uses AI to analyze customer interactions in real-time, providing insights and recommendations to your sales team." },
-      { speaker: 'prospect' as const, text: "Hmm, we're already using a CRM system. How would this integrate with what we have?" },
-    ];
+  // Analyze transcript with Claude in real-time
+  const analyzeTranscriptRealtime = async (entry: TranscriptEntry) => {
+    // Prevent multiple simultaneous analyses
+    if (analysisQueueRef.current) {
+      return;
+    }
 
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index < demoMessages.length) {
-        const message = demoMessages[index];
-        const entry: TranscriptEntry = {
-          id: `msg-${Date.now()}-${index}`,
-          speaker: message.speaker,
-          text: message.text,
-          timestamp: new Date(),
-        };
+    analysisQueueRef.current = true;
+    setIsAnalyzing(true);
 
-        setTranscript((prev) => [...prev, entry]);
-
-        // Analyze after each message
-        analyzeTranscript(entry, demoMessages.slice(0, index + 1));
-
-        index++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 3000);
-  };
-
-  // Analyze transcript with Claude
-  const analyzeTranscript = async (entry: TranscriptEntry, history: any[]) => {
     try {
+      // Get conversation history
+      const history = transcript.map(t => ({
+        speaker: t.speaker,
+        text: t.text,
+      }));
+
       const response = await fetch('/api/analyze/transcript', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -165,6 +208,9 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
       }
     } catch (error) {
       console.error('Error analyzing transcript:', error);
+    } finally {
+      setIsAnalyzing(false);
+      analysisQueueRef.current = false;
     }
   };
 
@@ -209,35 +255,48 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
               </button>
             </div>
           ) : (
-            <button
+            <div className="flex items-center gap-2">
+              <button
+                onClick={initiateTestCall}
+                disabled={isInitiating}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Activity className="h-4 w-4" />
+                {isInitiating ? 'Starting...' : 'Demo Mode'}
+              </button>
+              <button
+                onClick={initiateCall}
+                disabled={isInitiating || !phoneNumber}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Phone className="h-4 w-4" />
+                {isInitiating ? 'Calling...' : 'Start Real Call'}
+              </button>
+            </div>
+          )}
+        </div>
+button
               onClick={initiateCall}
               disabled={isInitiating || !phoneNumber}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Phone className="h-4 w-4" />
               {isInitiating ? 'Calling...' : 'Start Call'}
-            </button>
-          )}
-        </div>
-
-        {callSid && (
-          <p className="text-xs text-gray-500">Call SID: {callSid}</p>
-        )}
-      </div>
-
-      {/* Live Analysis Dashboard */}
-      {isCallActive && currentAnalysis && (
-        <div className="grid grid-cols-2 gap-4">
-          {/* Confidence Score */}
-          <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
-            <div className="flex items-center gap-2 mb-3">
-              <TrendingUp className="h-5 w-5 text-orange-400" />
-              <h4 className="text-sm font-medium text-gray-300">Confidence Score</h4>
+            </button/div>
+              )}
             </div>
-            <div className={`text-4xl font-bold ${getConfidenceColor(currentAnalysis.confidenceScore)}`}>
-              {currentAnalysis.confidenceScore}%
-            </div>
-            <p className="text-xs text-gray-500 mt-2">{currentAnalysis.reasoning}</p>
+            {currentAnalysis ? (
+              <>
+                <div className={`text-4xl font-bold ${getConfidenceColor(currentAnalysis.confidenceScore)}`}>
+                  {currentAnalysis.confidenceScore}%
+                </div>
+                <p className="text-xs text-gray-500 mt-2">{currentAnalysis.reasoning}</p>
+              </>
+            ) : (
+              <div className="text-2xl text-gray-600">
+                Analyzing...
+              </div>
+            )}
           </div>
 
           {/* Sentiment */}
@@ -246,10 +305,18 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
               <Activity className="h-5 w-5 text-purple-400" />
               <h4 className="text-sm font-medium text-gray-300">Sentiment</h4>
             </div>
-            <div className={`text-2xl font-bold ${getSentimentColor(currentAnalysis.sentiment)}`}>
-              {currentAnalysis.sentiment}
-            </div>
-            <p className="text-xs text-gray-500 mt-2">{currentAnalysis.recommendation}</p>
+            {currentAnalysis ? (
+              <>
+                <div className={`text-2xl font-bold ${getSentimentColor(currentAnalysis.sentiment)}`}>
+                  {currentAnalysis.sentiment}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">{currentAnalysis.recommendation}</p>
+              </>
+            ) : (
+              <div className="text-lg text-gray-600">
+                Waiting...
+              </div>
+            )}
           </div>
         </div>
       )}
