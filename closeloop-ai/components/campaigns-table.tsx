@@ -39,12 +39,16 @@ export function CampaignsTable({ userId }: CampaignsTableProps) {
     async function fetchCampaigns() {
       try {
         setLoading(true)
+        console.log("[CampaignsTable] Fetching campaigns for user:", userId)
         const response = await fetch(`/api/campaigns?user_id=${userId}`)
         const data = await response.json()
+        console.log("[CampaignsTable] API response:", data)
 
         if (data.success) {
+          console.log("[CampaignsTable] Campaigns found:", data.campaigns?.length || 0)
           setCampaigns(data.campaigns || [])
         } else {
+          console.error("[CampaignsTable] API error:", data.error)
           setError(data.error || "Failed to fetch campaigns")
         }
       } catch (err) {
