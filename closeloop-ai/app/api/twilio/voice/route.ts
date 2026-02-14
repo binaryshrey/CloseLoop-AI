@@ -111,6 +111,12 @@ export async function POST(request: NextRequest) {
                 tts: {
                   output_format: 'ulaw_8000',
                 },
+                agent: {
+                  webhooks: {
+                    url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://close-loop-ai.vercel.app'}/api/elevenlabs/webhook`,
+                    events: ['conversation.initiated', 'agent.response', 'user.transcript', 'conversation.ended'],
+                  },
+                },
               },
               dynamic_variables: {
                 _agent_name_: 'Jordan Belfort',
