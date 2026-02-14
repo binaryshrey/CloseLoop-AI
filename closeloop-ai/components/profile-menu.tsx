@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { User, Home, LogOut } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
-import { signOut } from "@workos-inc/authkit-nextjs";
+import { signOut } from "@/app/actions/auth";
 
 interface ProfileMenuProps {
   user: {

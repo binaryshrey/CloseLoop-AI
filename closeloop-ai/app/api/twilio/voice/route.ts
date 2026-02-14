@@ -34,10 +34,9 @@ export async function POST(request: NextRequest) {
 
     // Alternative: Use ElevenLabs' phone integration directly
     // If you've configured phone integration in ElevenLabs dashboard
-    const dial = twiml.dial();
-    dial.number({
-      url: `https://api.elevenlabs.io/v1/convai/conversation/phone?agent_id=${process.env.ELEVENLABS_AGENT_ID}`,
-    });
+    // Uncomment and configure with your ElevenLabs phone number if needed:
+    // const dial = twiml.dial();
+    // dial.number('+1234567890'); // Replace with ElevenLabs phone number
 
     return new NextResponse(twiml.toString(), {
       headers: {
