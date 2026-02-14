@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('campaigns')
+      // @ts-ignore - Supabase type inference issue
       .insert(campaignData)
       .select()
       .single();
@@ -134,6 +135,7 @@ export async function PATCH(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('campaigns')
+      // @ts-ignore - Supabase type inference issue
       .update(campaignUpdate)
       .eq('id', campaign_id)
       .select()

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       .from('campaigns')
       .select('*')
       .eq('id', campaign_id)
-      .single();
+      .single() as { data: any; error: any };
 
     if (campaignError || !campaign) {
       return NextResponse.json(
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const { data: leads, error: leadsError } = await supabase
       .from('leads')
       .select('*')
-      .eq('campaign_id', campaign_id);
+      .eq('campaign_id', campaign_id) as { data: any[]; error: any };
 
     if (leadsError) {
       return NextResponse.json(
@@ -59,10 +59,10 @@ export async function POST(request: NextRequest) {
 
     // Analyze each lead using Claude
     const analyzedLeads = await Promise.all(
-      leads.map(async (lead) => {
+      leads.map(async (lead: any) => {
         try {
           // Check if this is a VIP user
-          const isVIP = VIP_USERS.some(
+          const isVIP = lead.name && VIP_USERS.some(
             (vip) => lead.name.toLowerCase().includes(vip.toLowerCase())
           );
 
@@ -131,6 +131,7 @@ REASON: [one concise sentence explaining the score]`;
           // Update lead with F-Score and reason
           const { error: updateError } = await supabase
             .from('leads')
+            // @ts-ignore - Supabase type inference issue
             .update({
               f_score: fScore,
               reason: reason,

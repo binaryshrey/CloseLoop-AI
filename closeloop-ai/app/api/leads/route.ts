@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('leads')
+      // @ts-ignore - Supabase type inference issue
       .insert(leadsData)
       .select();
 
@@ -145,6 +146,7 @@ export async function PATCH(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('leads')
+      // @ts-ignore - Supabase type inference issue
       .update(leadUpdate)
       .eq('id', lead_id)
       .select()
@@ -188,6 +190,7 @@ export async function PUT(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('leads')
+      // @ts-ignore - Supabase type inference issue
       .update(update_data)
       .in('id', lead_ids)
       .select();

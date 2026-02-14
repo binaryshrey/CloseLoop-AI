@@ -117,6 +117,37 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Initiate test call with mock data
+  const initiateTestCall = async () => {
+    setIsInitiating(true);
+    setTranscript([]);
+    setCurrentAnalysis(null);
+    setIsCallActive(true);
+    setCallDuration(0);
+
+    // Simulate call with mock transcript
+    setTimeout(() => {
+      const mockTranscript: TranscriptEntry = {
+        id: 'demo-1',
+        speaker: 'agent',
+        text: 'Hello! This is a demo call. How can I help you today?',
+        timestamp: new Date(),
+      };
+      setTranscript([mockTranscript]);
+
+      // Add mock analysis
+      setCurrentAnalysis({
+        confidenceScore: 75,
+        sentiment: 'POSITIVE',
+        signals: ['Friendly tone', 'Clear communication'],
+        recommendation: 'Continue with value proposition',
+        reasoning: 'Prospect seems engaged and interested',
+      });
+    }, 1000);
+
+    setIsInitiating(false);
+  };
+
   // Initiate call
   const initiateCall = async () => {
     const targetNumber = '+13472229576'; // Your phone number
@@ -275,15 +306,16 @@ export default function LiveCallMonitor({ phoneNumber, campaignData }: LiveCallM
             </div>
           )}
         </div>
-button
-              onClick={initiateCall}
-              disabled={isInitiating || !phoneNumber}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Phone className="h-4 w-4" />
-              {isInitiating ? 'Calling...' : 'Start Call'}
-            </button/div>
-              )}
+      </div>
+
+      {/* Real-time Analysis */}
+      {isCallActive && (
+        <div className="grid grid-cols-2 gap-6">
+          {/* Confidence Score */}
+          <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="h-5 w-5 text-orange-400" />
+              <h4 className="text-sm font-medium text-gray-300">Confidence Score</h4>
             </div>
             {currentAnalysis ? (
               <>

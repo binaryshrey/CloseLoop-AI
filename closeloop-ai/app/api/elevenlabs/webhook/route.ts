@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         // Keep transcript for a while for potential review
         setTimeout(() => {
           callTranscripts.delete(sessionId);
-          activeConnections.delete(sessionId);
+          sseConnections.delete(sessionId);
         }, 60000); // Clean up after 1 minute
         break;
 
