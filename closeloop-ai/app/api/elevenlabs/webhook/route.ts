@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getConversationId } from '../twilio/voice/route';
 
 // In-memory store for call transcripts (use Redis in production)
 const callTranscripts: Map<string, Array<{
