@@ -48,45 +48,29 @@ export async function POST(request: NextRequest) {
     try {
       const connect = twiml.connect();
 
-      // Build the WebSocket URL with agent_id
-      const websocketUrl = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${process.env.ELEVENLABS_AGENT_ID}`;
+      // Build the WebSocket URL with signed token approach
+      // ElevenLabs requires the API key in a specific format for Twilio
+      const websocketUrl = `wss://api.elevenlabs.io/v1/convai/conversation`;
 
       const stream = connect.stream({
         url: websocketUrl,
-        track: 'both_tracks', // Send both inbound and outbound audio
       });
 
-      // Pass ElevenLabs API key as a custom parameter
+      // Pass required parameters for ElevenLabs authentication
       stream.parameter({
-        name: 'xi-api-key',
+        name: 'agent_id',
+        value: process.env.ELEVENLABS_AGENT_ID,
+      });
+
+      stream.parameter({
+        name: 'api_key',
         value: process.env.ELEVENLABS_API_KEY,
       });
 
-      // Pass the conversation configuration
+      // Pass call metadata
       stream.parameter({
-        name: 'input_audio_format',
-        value: 'pcm_mulaw_8000', // Twilio's audio format
-      });
-
-      stream.parameter({
-        name: 'output_audio_format',
-        value: 'pcm_mulaw_8000', // Twilio's audio format
-      });
-
-      // Pass call metadata for tracking
-      stream.parameter({
-        name: 'call_sid',
+        name: 'call_id',
         value: callSid,
-      });
-
-      stream.parameter({
-        name: 'from',
-        value: from,
-      });
-
-      stream.parameter({
-        name: 'to',
-        value: to,
       });
 
       console.log('TwiML with stream generated successfully');
