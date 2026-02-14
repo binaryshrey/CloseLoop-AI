@@ -115,10 +115,11 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   const [activeCallSid, setActiveCallSid] = useState<string | null>(null);
   const [confidenceScore, setConfidenceScore] = useState(0);
   const [callDuration, setCallDuration] = useState(0);
-  const [liveTranscript, setLiveTranscript] = useState<Array<{ id: string; speaker: string; text: string; timestamp: string }>>([]);
+  const [liveTranscript, setLiveTranscript] = useState<Array<{ id: string; speaker: string; text: string }>>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const transcriptPollRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTranscriptCountRef = useRef(0);
 
   // Initialize step and campaign from query params
   useEffect(() => {
@@ -623,42 +624,53 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     }
   };
 
-  // Connect to SSE transcript stream for a call
-  const connectToTranscriptStream = (callSid: string) => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+  // Poll ElevenLabs for transcript updates via our API
+  const startTranscriptPolling = (callSid: string) => {
+    if (transcriptPollRef.current) {
+      clearInterval(transcriptPollRef.current);
     }
+    lastTranscriptCountRef.current = 0;
 
-    const es = new EventSource(`/api/transcript/stream?callSid=${callSid}`);
-    eventSourceRef.current = es;
-
-    es.onmessage = (event) => {
+    transcriptPollRef.current = setInterval(async () => {
       try {
-        const data = JSON.parse(event.data);
+        const response = await fetch(`/api/elevenlabs/get-transcript?callSid=${callSid}`);
+        if (!response.ok) return;
 
-        if (data.type === 'transcript' && data.data) {
-          const entry = data.data;
-          setLiveTranscript((prev) => [...prev, entry]);
+        const data = await response.json();
 
-          // Feed to Claude for analysis
-          analyzeWithClaude(entry.text, entry.speaker);
+        if (data.transcript && data.transcript.length > 0) {
+          setLiveTranscript(data.transcript);
+
+          // If there are new messages, analyze with Claude
+          if (data.transcript.length > lastTranscriptCountRef.current) {
+            const newEntries = data.transcript.slice(lastTranscriptCountRef.current);
+            lastTranscriptCountRef.current = data.transcript.length;
+
+            // Analyze the latest message with full conversation context
+            const latest = newEntries[newEntries.length - 1];
+            analyzeWithClaude(latest.text, latest.speaker, data.transcript);
+          }
         }
 
-        if (data.type === 'call_ended') {
-          console.log('Call ended via SSE');
+        // Stop polling if conversation is done
+        if (data.status === 'done') {
+          if (transcriptPollRef.current) {
+            clearInterval(transcriptPollRef.current);
+            transcriptPollRef.current = null;
+          }
         }
-      } catch (err) {
-        console.error('Error parsing SSE data:', err);
+      } catch (error) {
+        console.error('Error polling transcript:', error);
       }
-    };
-
-    es.onerror = () => {
-      console.error('SSE connection error');
-    };
+    }, 3000); // Poll every 3 seconds
   };
 
   // Analyze transcript with Claude for real-time confidence scoring
-  const analyzeWithClaude = async (transcript: string, speaker: string) => {
+  const analyzeWithClaude = async (
+    transcript: string,
+    speaker: string,
+    conversationHistory: Array<{ id: string; speaker: string; text: string }>
+  ) => {
     if (isAnalyzing) return;
     setIsAnalyzing(true);
 
@@ -669,7 +681,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
         body: JSON.stringify({
           transcript,
           speaker,
-          conversationHistory: liveTranscript,
+          conversationHistory,
         }),
       });
 
@@ -829,7 +841,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
         if (callResponse.ok && callData.success) {
           setActiveCallSid(callData.callSid);
           startCallTimer();
-          connectToTranscriptStream(callData.callSid);
+          startTranscriptPolling(callData.callSid);
           toast.success("Call Connected", {
             description: `Calling ${currentLead.name} at ${currentLead.phone}`,
           });
@@ -910,15 +922,15 @@ export default function OnboardClient({ user }: OnboardClientProps) {
     }, 1000);
   };
 
-  // Stop call timer and SSE
+  // Stop call timer and transcript polling
   const cleanupCall = () => {
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;
     }
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
+    if (transcriptPollRef.current) {
+      clearInterval(transcriptPollRef.current);
+      transcriptPollRef.current = null;
     }
   };
 

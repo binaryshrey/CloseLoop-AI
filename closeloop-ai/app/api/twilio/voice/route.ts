@@ -3,41 +3,48 @@ import twilio from 'twilio';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
+// In-memory store mapping callSid -> ElevenLabs conversationId
+const callConversationMap = new Map<string, string>();
+
+export function getConversationId(callSid: string): string | undefined {
+  return callConversationMap.get(callSid);
+}
+
 /**
- * Converts the ElevenLabs register-call response into valid TwiML for Twilio.
- * Handles both formats:
- *  - Raw TwiML XML (starts with '<' or '<?xml')
- *  - JSON with a twiml_response field
+ * Parses the ElevenLabs register-call response.
+ * Returns both the TwiML and the conversation_id (if present).
  */
-function extractTwiml(responseBody: string): string {
+function parseRegisterCallResponse(responseBody: string): { twiml: string; conversationId?: string } {
   const trimmed = responseBody.trim();
 
-  // If it starts with '<', it's already raw TwiML XML
+  // If it starts with '<', it's already raw TwiML XML (no conversation_id available)
   if (trimmed.startsWith('<')) {
     console.log('Response format: raw TwiML XML');
-    return trimmed;
+    return { twiml: trimmed };
   }
 
   // Otherwise try to parse as JSON
   try {
     const json = JSON.parse(trimmed);
+    const conversationId = json.conversation_id;
 
-    // Check known field names
+    if (conversationId) {
+      console.log('Extracted conversation_id:', conversationId);
+    }
+
+    // Check known TwiML field names
     if (json.twiml_response) {
       console.log('Response format: JSON with twiml_response field');
-      return json.twiml_response;
+      return { twiml: json.twiml_response, conversationId };
     }
     if (json.twiml) {
       console.log('Response format: JSON with twiml field');
-      return json.twiml;
+      return { twiml: json.twiml, conversationId };
     }
 
-    // If JSON but no known TwiML field, log everything for debugging
     console.error('JSON response has no twiml field. Keys:', Object.keys(json));
-    console.error('Full response:', trimmed);
     throw new Error('ElevenLabs response missing TwiML field');
   } catch (parseError: any) {
-    // Not XML, not valid JSON — something unexpected
     if (parseError.message === 'ElevenLabs response missing TwiML field') {
       throw parseError;
     }
@@ -135,8 +142,19 @@ export async function POST(request: NextRequest) {
       const responseBody = await registerResponse.text();
       console.log('Raw ElevenLabs response:', responseBody);
 
-      // Convert response to TwiML (handles both XML and JSON formats)
-      const twimlResponse = extractTwiml(responseBody);
+      // Parse response to get both TwiML and conversation_id
+      const { twiml: twimlResponse, conversationId } = parseRegisterCallResponse(responseBody);
+
+      // Store callSid -> conversationId mapping for transcript retrieval
+      if (callSid && conversationId) {
+        callConversationMap.set(callSid, conversationId);
+        console.log(`Stored mapping: ${callSid} -> ${conversationId}`);
+
+        // Clean up after 1 hour
+        setTimeout(() => {
+          callConversationMap.delete(callSid);
+        }, 3600000);
+      }
 
       const totalDuration = Date.now() - startTime;
       console.log('\nVOICE WEBHOOK COMPLETED SUCCESSFULLY');
