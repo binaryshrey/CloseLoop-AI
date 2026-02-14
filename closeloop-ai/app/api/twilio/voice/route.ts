@@ -67,13 +67,25 @@ export async function POST(request: NextRequest) {
       console.log("🔗 STEP 1: Requesting signed URL from ElevenLabs...");
       const signedUrlStartTime = Date.now();
 
+      // Prepare conversation configuration
+      const conversationConfig = {
+        agent_id: process.env.ELEVENLABS_AGENT_ID,
+      };
+
+      // Build URL with query parameters
+      const queryParams = new URLSearchParams();
+      queryParams.append("agent_id", process.env.ELEVENLABS_AGENT_ID || "");
+
+      console.log("📋 Conversation Config:", conversationConfig);
+
       // Get a signed URL from ElevenLabs for this conversation
       const signedUrlResponse = await fetch(
-        `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${process.env.ELEVENLABS_AGENT_ID}`,
+        `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?${queryParams.toString()}`,
         {
           method: "GET",
           headers: {
             "xi-api-key": process.env.ELEVENLABS_API_KEY || "",
+            "Content-Type": "application/json",
           },
         },
       );
@@ -121,30 +133,40 @@ export async function POST(request: NextRequest) {
       );
       console.log("   Domain:", new URL(signed_url).hostname);
 
-      // Optional: Add a brief pause/greeting before connecting
-      // Uncomment if the connection is too abrupt
-      // twiml.pause({ length: 1 });
+      // Add a brief pause to ensure the call is fully established
+      twiml.pause({ length: 1 });
 
       console.log("\n🔗 STEP 2: Creating Twilio Media Stream connection...");
 
       // Set up Twilio Media Stream to connect to ElevenLabs WebSocket
       const connect = twiml.connect();
 
+      // Configure custom parameters for ElevenLabs
+      const customParameters = {
+        call_sid: callSid,
+        from: from,
+        to: to,
+      };
+
       // Create the stream with the signed URL
-      // IMPORTANT: ElevenLabs requires inbound_track to receive caller audio
-      // It handles bidirectional audio internally via the WebSocket
+      // IMPORTANT: For ElevenLabs bidirectional audio:
+      // - inbound_track: Sends caller audio to ElevenLabs
+      // - ElevenLabs returns audio via WebSocket media messages
       const stream = connect.stream({
         url: signed_url,
         track: "inbound_track", // Send caller audio to ElevenLabs
         name: "elevenlabs_stream", // Stream identifier
       });
 
-      // ElevenLabs handles outbound audio (AI responses) automatically
-      // through mark/media messages on the WebSocket
+      // Add custom parameters to the stream
+      for (const [key, value] of Object.entries(customParameters)) {
+        stream.parameter({ name: key, value: value });
+      }
 
       console.log("✅ TwiML stream object created successfully");
       console.log("   Stream Name: elevenlabs_stream");
       console.log("   Track Mode: inbound_track (caller → ElevenLabs)");
+      console.log("   Custom Parameters:", customParameters);
       console.log("   Response Audio: Handled by ElevenLabs via WebSocket");
       const twimlXml = twiml.toString();
       console.log("📄 Generated TwiML:");
