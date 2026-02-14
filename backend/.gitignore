@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv
+.venv/
+venv/
+.env/
+.env.*
+
+# Environment variables
+.env
+.env.local
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checking
+.mypy_cache/
+.pyre/
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Database
+*.db
+*.sqlite3
+
+# Docker
+*.pid
+
+# Node (if you pair with Next.js frontend)
+node_modules/
+
+# Coverage reports
+coverage.xml
