@@ -2,6 +2,8 @@
 
 **AI-Powered Sales Automation Platform** — Automate lead scoring, outreach, and real-time call monitoring with AI agents.
 
+![banner](https://raw.githubusercontent.com/binaryshrey/CloseLoop-AI/refs/heads/main/backend/banner.png)
+
 [Watch Demo Video](https://vimeo.com/1165028067?share=copy&fl=sv&fe=ci)
 
 CloseLoop AI combines campaign management, AI-powered lead scoring (Claude), real-time outbound phone calls (Twilio + ElevenLabs AI voice agents), live call monitoring with AI analysis, and multi-channel outreach (email + phone) into a single platform.
