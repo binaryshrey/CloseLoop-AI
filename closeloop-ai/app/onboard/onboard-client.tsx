@@ -110,6 +110,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
   const [emailSent, setEmailSent] = useState(false);
   const [activeCallLead, setActiveCallLead] = useState<string | null>(null);
   const [callModalOpen, setCallModalOpen] = useState(false);
+  const [userPhoneNumber, setUserPhoneNumber] = useState("");
 
   // Initialize step and campaign from query params
   useEffect(() => {
@@ -698,10 +699,10 @@ export default function OnboardClient({ user }: OnboardClientProps) {
       return;
     }
 
-    // Validate phone number
-    if (!currentLead.phone) {
-      toast.error("No Phone Number", {
-        description: `${currentLead.name} doesn't have a phone number`,
+    // Validate user's phone number
+    if (!userPhoneNumber) {
+      toast.error("Your Phone Number Required", {
+        description: "Please enter your phone number above to receive the AI call",
       });
       return;
     }
@@ -731,12 +732,12 @@ export default function OnboardClient({ user }: OnboardClientProps) {
         const callLogData = await callLogResponse.json();
         console.log("Call log created:", callLogData);
 
-        // Initiate the actual call via Twilio
+        // Initiate the actual call via Twilio — calls the user's phone so they can experience the AI demo
         const callResponse = await fetch("/api/twilio/make-call", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: currentLead.phone,
+            to: userPhoneNumber,
             campaignData: {
               campaignName,
               campaignDescription,
@@ -1938,6 +1939,23 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                           {campaignName || "Untitled Campaign"}
                         </p>
                       </div>
+                    </div>
+
+                    {/* User Phone Number Input */}
+                    <div className="bg-zinc-800 rounded-lg p-4 mb-6">
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Your Phone Number
+                      </label>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Enter your phone number to receive the AI demo call. The AI agent will call you and demonstrate the sales pitch.
+                      </p>
+                      <input
+                        type="tel"
+                        value={userPhoneNumber}
+                        onChange={(e) => setUserPhoneNumber(e.target.value)}
+                        placeholder="+1 (555) 123-4567"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
                     </div>
 
                     {getSelectedLeadsWithDetails().length === 0 ? (
