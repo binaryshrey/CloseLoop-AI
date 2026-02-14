@@ -2168,7 +2168,7 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                                   <span className="text-orange-400 font-medium">
                                     ● Recording
                                   </span>
-                                  <span>{liveTranscript.length} messages</span>
+                                  <span>Live</span>
                                 </div>
                               </div>
 
@@ -2176,9 +2176,6 @@ export default function OnboardClient({ user }: OnboardClientProps) {
                               <div className="bg-zinc-800 rounded-lg p-6 border border-zinc-700">
                                 <h3 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
                                   Confidence Score
-                                  {isAnalyzing && (
-                                    <Loader2 className="h-3 w-3 animate-spin text-orange-400" />
-                                  )}
                                 </h3>
                                 <div className="relative w-40 h-40 mx-auto">
                                   <svg className="w-full h-full transform -rotate-90">
